@@ -1,0 +1,6 @@
+## Interface: 16001
+## Title: ChatCopy Probe
+## Notes: Temporary diagnostic for ChatCopy. Records the chat setup at login, reload and logout.
+## SavedVariables: ChatCopyProbeDB
+
+ChatCopyProbe.lua
