@@ -1,43 +1,78 @@
 # Contributing to ChatCopy
 
-`ChatCopy Design Doc.md` explains what the addon does and why. Read it before changing behavior.
+Thanks for helping out. ChatCopy is small on purpose, so most changes are a few lines in one file. This page covers how to get set up, how the code is organized, and what to check before you send a change.
 
-## Layout
+If you're changing how the addon behaves, read `ChatCopy Design Doc.md` first. It explains what the addon does and why.
 
-- `ChatCopy/` is the addon itself. Copy or link it into the client's `Interface\AddOns` folder.
-- `tests/` holds tests that run outside the game with plain Lua 5.1 or later.
-- `tools/` holds throwaway diagnostics, such as the login probe. Nothing in it ships.
+## Getting set up
 
-## Files and their boundaries
+1. Copy or link the `ChatCopy/` folder into your WoW Forever `Interface\AddOns` folder.
+2. Open the repository in [VS Code](https://code.visualstudio.com/) and install the recommended extensions when it asks: the Lua language server, Ketho's WoW API, and StyLua. Together they flag unknown APIs and wrong arguments as you type, and format your code.
+3. Optionally, install [Lua](https://www.lua.org/) 5.1 or later to run the tests yourself. GitHub runs them on every push and pull request either way.
+
+## How the project is laid out
+
+- `ChatCopy/` is the addon itself, and the only folder that ships.
+- `tests/` has tests that run outside the game.
+- `tools/` has throwaway diagnostics, such as the login probe.
+- `.github/workflows/` runs luacheck and the tests on every push and pull request.
+
+Each file in `ChatCopy/` has one job:
 
 | File | Does | Never |
 | --- | --- | --- |
-| `Chat.lua` | Reads the live chat setup, diffs it against a profile, applies a profile. | Prints, or touches saved data. |
-| `Codec.lua` | Export strings, and validation of imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the test can stand in for them outside the game. |
-| `Profiles.lua` | Owns `ChatCopyDB`, the login apply and the logout save. | Builds UI. |
-| `UI.lua` | The options panel and `/chatcopy`. | Changes chat or saved data directly; it goes through `Profiles`. |
+| `Chat.lua` | Reads the live chat setup, compares it with a profile, applies a profile. | Prints, or touches saved data. |
+| `Codec.lua` | Builds export strings and checks imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the test can stand in for them outside the game. |
+| `Profiles.lua` | Owns the saved data (`ChatCopyDB`), the login apply and the logout save. | Builds UI. |
+| `UI.lua` | The options panel and `/chatcopy`. | Changes chat or saved data itself; it goes through `Profiles`. |
 
-Dependencies only point down this table: `UI` uses `Profiles` and `Codec`, and `Profiles` uses `Chat`.
+Dependencies only point down the table: `UI` uses `Profiles` and `Codec`, and `Profiles` uses `Chat`.
 
-## Style
+## Chat terms
 
-- Format with [StyLua](https://github.com/JohnnyMorganz/StyLua) (`stylua.toml`) and lint with [luacheck](https://github.com/lunarmodules/luacheck) (`.luacheckrc`).
-- Tabs for indentation. Module functions in PascalCase (`Chat.Read`), locals in camelCase, constants in UPPER_CASE.
-- Comments say why, not what. Most lines need none.
+WoW's own code uses three words for chat windows, and we keep them apart:
+
+- A **tab** is what the player sees and names, like "General" or "Trade".
+- A **window** is one of the numbered slots behind the tabs, from 1 to 10. The `GetChatWindow*` functions take a window number.
+- A **frame** is the UI object for a window, `ChatFrame1` to `ChatFrame10`. You pass it to the `FCF_*` functions and call methods like `frame:AddChannel` on it.
+
+## Code style
+
+- Format with StyLua (`stylua.toml`). The recommended extension does it for you. luacheck (`.luacheckrc`) runs on GitHub.
+- Indent with tabs. Name module functions in PascalCase (`Chat.Read`), locals in camelCase, and constants in UPPER_CASE.
+- Comments explain why, not what. Most lines don't need one. Do comment game behavior that a reader couldn't guess.
 - Check inputs where they enter the addon (imports, game API results), not between our own functions.
-- Keep it plain: no libraries, no `OnUpdate` polling, no hooks on Blizzard functions.
+- Keep it plain: no libraries, no `OnUpdate` polling, and no hooks on Blizzard functions.
 
-## Game APIs
+## Using game APIs
 
-The client is WoW Forever (interface 16001), closest to retail 12.1.5. APIs change between versions, so before using a new one:
+The client is WoW Forever (interface 16001), which is closest to retail 12.1.5. APIs change between versions, so before using a new API:
 
-1. Find it in [Blizzard's UI source](https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns), and check it is not only a deprecated alias.
-2. Check it exists in game, for example `/run print(SomeFunction)`.
-3. Add it to `read_globals` in `.luacheckrc`.
+1. Find the API in [Blizzard's UI source](https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns), and make sure it isn't just a deprecated alias.
+2. Confirm the client has the API. Print its name in game, for example `/run print(C_Timer.NewTimer)`. Anything other than `nil` means it exists. Events and UI templates can't be printed, so try those in game instead.
+3. Add the API's global name to `read_globals` in `.luacheckrc`.
 
-Use chat frame methods (`frame:AddMessageGroup`) rather than the old `ChatFrame_*` globals, which only exist while the `loadDeprecationFallbacks` setting is on.
+Use frame methods (`frame:AddMessageGroup`) rather than the old `ChatFrame_*` globals. Those only exist while the `loadDeprecationFallbacks` setting is on.
 
 ## Testing
 
-- `lua tests/validate.lua` runs the import validator against good and malformed profiles.
-- Everything else is tested in game; section 11 of the design doc has the steps.
+- Run `lua tests/validate.lua` from the repository root. It checks the import validator against good and malformed profiles.
+- Everything else needs the game. Section 11 of the design doc has the steps.
+
+## Sending a change
+
+Before you open a pull request:
+
+- Format with StyLua, and run the validator test if you have Lua. GitHub runs it and luacheck on your pull request too.
+- Try the change in game, including a `/reload` and a full logout, since saving happens at logout.
+- If the change affects behavior, update the design doc to match.
+- Keep each pull request to one change, and say in the description what you tested.
+
+## Reporting a bug
+
+Open an issue with:
+
+- What you did, what you expected, and what happened instead.
+- The client build, from `/run print(GetBuildInfo())`.
+- Any Lua error text. Turn error popups on with `/console scriptErrors 1` if you don't see any.
+- The status lines from the `/chatcopy` panel, if they're relevant.

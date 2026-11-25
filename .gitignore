@@ -1,0 +1,3 @@
+# Keep personal VS Code settings out, but share the recommended extensions.
+.vscode/*
+!.vscode/extensions.json

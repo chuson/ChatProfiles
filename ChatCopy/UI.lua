@@ -17,7 +17,7 @@ local panel = CreateFrame("Frame")
 local category = Settings.RegisterCanvasLayoutCategory(panel, "ChatCopy")
 Settings.RegisterAddOnCategory(category)
 
--- Filled in on first show, since most sessions never open the panel.
+-- Widgets, built the first time the panel opens. Most sessions never open it.
 local ui
 
 local function Label(text, font, anchor, x, y)
@@ -40,6 +40,7 @@ local function Refresh()
 	local name, profile = Profiles.Selected()
 	local failed = Profiles.HasFailed()
 
+	-- The dropdown doesn't notice profile changes on its own.
 	ui.dropdown:GenerateMenu()
 	for _, checkbox in ipairs(ui.checkboxes) do
 		checkbox:SetChecked(profile ~= nil and profile.include[checkbox.category])
@@ -50,6 +51,7 @@ local function Refresh()
 	ui.export:SetEnabled(profile ~= nil)
 	ui.saveNow:SetEnabled(profile ~= nil and not failed)
 
+	-- Both nil when there's no profile.
 	local changes, duplicates = Profiles.Status()
 	local status
 	if not name then
@@ -153,6 +155,7 @@ local function Build()
 	ui.name = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
 	ui.name:SetPoint("LEFT", nameLabel, "RIGHT", 14, 0)
 	ui.name:SetSize(180, 20)
+	-- Otherwise the box grabs the keyboard as soon as the panel opens.
 	ui.name:SetAutoFocus(false)
 	ui.name:SetMaxLetters(Profiles.MAX_NAME_LENGTH)
 
@@ -206,12 +209,13 @@ local function Build()
 	local pasteBox = CreateFrame("ScrollFrame", nil, panel, "InputScrollFrameTemplate")
 	pasteBox:SetSize(WIDTH - 10, 80)
 	pasteBox:SetPoint("TOPLEFT", ui.saveNow, "BOTTOMLEFT", 6, -12)
-	pasteBox.EditBox:SetWidth(WIDTH - 30)
+	pasteBox.EditBox:SetWidth(WIDTH - 30) -- room for the scroll bar
 	pasteBox.EditBox:SetAutoFocus(false)
 	pasteBox.CharCount:Hide()
 
 	ui.export = Button("Export", 100, function()
 		local _, profile = Profiles.Selected()
+		-- Addons can't write to the clipboard, so select the text for the player to copy.
 		pasteBox.EditBox:SetText(Codec.Export(profile))
 		pasteBox.EditBox:HighlightText()
 		pasteBox.EditBox:SetFocus()

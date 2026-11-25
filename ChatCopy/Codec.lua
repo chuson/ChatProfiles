@@ -7,8 +7,9 @@ local _, ns = ...
 local Codec = {}
 ns.Codec = Codec
 
+-- Exports are CBOR, then Base64 so they paste cleanly. Bump the number if the format changes.
 local PREFIX = "ChatCopy1:"
-local MAX_INPUT_LENGTH = 64 * 1024
+local MAX_INPUT_LENGTH = 64 * 1024 -- checked before decoding, so a huge paste can't stall the game
 local MAX_NAME_LENGTH = 50
 local MAX_LIST_LENGTH = 100 -- message groups or channels in one tab
 local MAX_COLORS = 200
@@ -31,6 +32,8 @@ local WINDOW_FIELDS = {
 local CHANNEL_FIELDS = { name = true, zoneID = true }
 local COLOR_FIELDS = { r = true, g = true, b = true, classColor = true }
 
+-- Validation stops at the first problem by raising an error, which Codec.Validate catches.
+-- Level 0 leaves the file and line number off the message.
 local function Check(ok, reason)
 	if not ok then
 		error(reason, 0)
@@ -48,7 +51,7 @@ local function CheckFields(t, allowed, what)
 	end
 end
 
--- A list here means keys 1 to n with nothing missing and nothing else.
+-- Keys 1 to n with no gaps and nothing else. Doesn't rely on #t, which is unreliable with gaps.
 local function CheckList(t, maxLength, what)
 	Check(type(t) == "table", what .. " is not a list")
 	local count = 0
@@ -69,7 +72,7 @@ local function CheckBoolean(value, what)
 	Check(value == nil or type(value) == "boolean", what .. " must be true or false")
 end
 
--- "|" starts the client's display escape codes, so it is removed from anything shown as a name.
+-- "|" starts the client's color and link escape codes, so it's stripped from anything shown as a name.
 local function CleanName(value, what)
 	Check(type(value) == "string", what .. " is not text")
 	local name = value:gsub("|", "")
@@ -211,6 +214,7 @@ function Codec.Import(text)
 		return nil, "that isn't a ChatCopy profile"
 	end
 
+	-- Both decoders raise errors on bad input instead of returning nil.
 	local ok, data = pcall(function()
 		return C_EncodingUtil.DeserializeCBOR(C_EncodingUtil.DecodeBase64(text:sub(#PREFIX + 1)))
 	end)

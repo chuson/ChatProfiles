@@ -6,6 +6,8 @@ local _, ns = ...
 local Chat = {}
 ns.Chat = Chat
 
+-- General and Combat Log are always windows 1 and 2, so they're keyed by number ("id:1").
+-- Tabs the player makes land in whatever window is free, so they're keyed by name ("name:Trade").
 local GENERAL = 1
 local COMBAT_LOG = 2
 local MAX_WINDOWS = Constants.ChatFrameConstants.MaxChatWindows
@@ -19,7 +21,8 @@ local function SameColor(have, want)
 	return Near(have.r, want.r) and Near(have.g, want.g) and Near(have.b, want.b)
 end
 
-local function FirstCustomId()
+-- The client reserves the first few windows (3 is voice transcription). We only touch 1 and 2.
+local function FirstCustomWindow()
 	return C_ChatInfo.GetNumReservedChatWindows() + 1
 end
 
@@ -27,13 +30,13 @@ local function IsCustomKey(key)
 	return key:sub(1, 5) == "name:"
 end
 
--- Most chat types have a display name among the client's global strings, such as SAY = "Say".
+-- Most chat types have a display name in the global strings, e.g. SAY = "Say".
 local function ChatTypeName(chatType)
 	local name = _G[chatType]
 	return type(name) == "string" and name or chatType
 end
 
--- Built-in zone channels have localized names, so they are matched by ID.
+-- Zone channels (General, Trade) have localized names, so match them by ID.
 -- Custom channels have no ID and are matched by name.
 local function ChannelKey(channel)
 	if channel.zoneID > 0 then
@@ -42,6 +45,7 @@ local function ChannelKey(channel)
 	return channel.name:lower()
 end
 
+-- The profile may come from a client in another language, so ask this one what the zone channel is called.
 local function ChannelName(channel)
 	if channel.zoneID > 0 then
 		return C_ChatInfo.GetChannelShortcutForChannelID(channel.zoneID) or channel.name
@@ -49,8 +53,10 @@ local function ChannelName(channel)
 	return channel.name
 end
 
+-- Channels and groups are sorted so an unchanged setup saves and exports the same way every time.
 local function ReadChannels(id)
 	local channels = {}
+	-- Returns name1, id1, name2, id2, ...
 	local values = { GetChatWindowChannels(id) }
 	for i = 1, #values, 2 do
 		table.insert(channels, { name = values[i], zoneID = values[i + 1] or 0 })
@@ -78,20 +84,21 @@ local function ReadColors()
 end
 
 -- Returns the live setup in the same shape as a profile, leaving out categories that
--- `include` turns off. Tabs that share a name are listed in `duplicates` and only the
--- first is used. `ids` maps each window's key to its chat frame number; it is kept apart
--- from `windows` because those are saved into profiles and frame numbers differ per character.
+-- `include` turns off. If two tabs share a name, only the first is used and the name is
+-- listed in `duplicates`. `ids` maps keys to window numbers; those differ per character,
+-- so they stay out of `windows`, which gets saved.
 function Chat.Read(include)
 	local setup = { windows = {}, ids = {}, duplicates = {} }
 	local dockOrder = {}
 	local seen = {}
-	local firstCustom = FirstCustomId()
+	local firstCustom = FirstCustomWindow()
 
 	for id = 1, MAX_WINDOWS do
 		local name, size, r, g, b, a, shown, locked, docked = GetChatWindowInfo(id)
 		local tracked = id == GENERAL or id == COMBAT_LOG or (id >= firstCustom and name and name ~= "")
 
-		-- A docked tab that is not selected reports shown = false, so check docked too.
+		-- A window keeps its name after its tab is closed, so check shown or docked. A docked
+		-- tab that isn't the selected one reports shown = false.
 		if tracked and (shown or docked) then
 			local key = id < firstCustom and ("id:" .. id) or ("name:" .. name)
 			if seen[key] then
@@ -102,19 +109,22 @@ function Chat.Read(include)
 				local window = { key = key, name = name }
 				if include.look then
 					window.size, window.r, window.g, window.b, window.a = size, r, g, b, a
-					window.locked = locked and true or false
+					window.locked = locked and true or false -- the API returns 1 or nil
 				end
+				-- The combat log uses its own filters, not message groups.
 				if include.contents and id ~= COMBAT_LOG then
 					window.groups = ReadGroups(id)
 					window.channels = ReadChannels(id)
 				end
+				-- `docked` is the position in the dock, or nil. Undocked windows sort last.
 				dockOrder[window] = docked or (MAX_WINDOWS + id)
 				table.insert(setup.windows, window)
 			end
 		end
 	end
 
-	-- Dock order, so that missing tabs are created in the same order on another character.
+	-- New tabs are added to the end of the dock, so creating them in dock order reproduces
+	-- the layout. Tabs that already exist can't be moved.
 	table.sort(setup.windows, function(x, y)
 		return dockOrder[x] < dockOrder[y]
 	end)
@@ -149,8 +159,8 @@ local function SetDifference(have, want, keyOf)
 	return missing, extra
 end
 
--- A setting the profile does not have (nil) is left alone. A font size of 0 means
--- the profile's character never set one, so it is left alone too.
+-- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means the
+-- character never picked one.
 local LOOK = {
 	{
 		label = "different font size",
@@ -158,6 +168,7 @@ local LOOK = {
 			return want.size ~= nil and want.size > 0 and have.size ~= want.size
 		end,
 		apply = function(frame, want)
+			-- The first argument is Blizzard's menu button; it's only read when size is nil.
 			FCF_SetChatWindowFontSize(nil, frame, want.size)
 		end,
 	},
@@ -201,10 +212,12 @@ local function DiffWindow(frame, have, want, include, add)
 		end
 	end
 
-	if not include.contents or want.key == "id:" .. COMBAT_LOG then
+	if not include.contents then
 		return
 	end
 
+	-- Either side may have no groups or channels: the combat log never does, and neither does
+	-- a profile saved while this category was off.
 	if want.groups and have.groups then
 		local missing, extra = SetDifference(have.groups, want.groups, function(group)
 			return group
@@ -229,6 +242,7 @@ local function DiffWindow(frame, have, want, include, add)
 				frame:AddChannel(name)
 			end)
 		end
+		-- The live name is already in this client's language.
 		for _, channel in ipairs(extra) do
 			add(have.name .. ": extra " .. channel.name .. " channel", function()
 				frame:RemoveChannel(channel.name)
@@ -263,8 +277,8 @@ local function DiffColors(have, want, add)
 end
 
 -- Returns a list of { text, run, changesTabs }, one per setting that differs. `text` says
--- how live chat differs from the profile, and `run` makes it match. An empty list means
--- the live setup matches the profile.
+-- how live chat differs from the profile, and `run` makes it match. The panel shows the text
+-- and Apply runs the same entries, so the two can't disagree.
 function Chat.Diff(live, profile)
 	local include = profile.include
 	local changes = {}
@@ -277,7 +291,7 @@ function Chat.Diff(live, profile)
 		wanted[want.key] = true
 	end
 
-	-- Closes come before creates, so a full set of tabs frees a slot before a new one is needed.
+	-- Closes go first: if every window is in use, a new tab can't open until one closes.
 	if include.tabs then
 		for _, have in ipairs(live.windows) do
 			if IsCustomKey(have.key) and not wanted[have.key] then
@@ -300,6 +314,7 @@ function Chat.Diff(live, profile)
 			DiffWindow(_G["ChatFrame" .. live.ids[want.key]], have, want, include, Add)
 		elseif include.tabs and IsCustomKey(want.key) then
 			Add('Missing tab "' .. want.name .. '"', function()
+				-- true = no default channels; Apply's second pass adds the profile's own.
 				FCF_OpenNewWindow(want.name, true)
 			end, true)
 		end
@@ -313,9 +328,10 @@ function Chat.Diff(live, profile)
 end
 
 -- Applies a profile and returns what still differs afterward (empty means success), plus
--- the first error a change raised, if any. Each change runs on its own, so one failing call
--- does not stop the rest, and a call that errors or silently does nothing shows up the same
--- way: in the returned list.
+-- the first error a change raised, if any.
+--
+-- Success means "nothing differs afterward", not "nothing raised an error", because some game
+-- functions fail silently. Each change gets its own pcall so one failure doesn't stop the rest.
 function Chat.Apply(profile)
 	local firstError
 	local function Run(runTabChanges)
@@ -329,7 +345,8 @@ function Chat.Apply(profile)
 		end
 	end
 
-	-- First open and close tabs, then diff again, so the rest also covers whatever a new tab starts with.
+	-- A tab has to exist before its font or channels can be set, so open and close tabs
+	-- first, then compare again and do the rest.
 	Run(true)
 	Run(false)
 	return Chat.Diff(Chat.Read(profile.include), profile), firstError

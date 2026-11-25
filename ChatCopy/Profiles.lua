@@ -19,11 +19,13 @@ local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
 
+-- A new table each call, since profiles edit theirs in place.
 local function DefaultInclude()
 	return { tabs = true, contents = true, look = true, colors = true }
 end
 
 local function CheckNewName(name)
+	-- Strip "|" (escape codes) before trimming, so "a |" doesn't leave a trailing space.
 	name = (name or ""):gsub("|", ""):match("^%s*(.-)%s*$")
 	if name == "" then
 		return nil, "Type a name in the Name box first."
@@ -38,7 +40,7 @@ end
 -- Returns what did not apply, and the first error a change raised, if any.
 local function Apply(profile)
 	local remaining, firstError = Chat.Apply(profile)
-	-- After a clean apply, live chat is exactly the profile, so saving is safe again.
+	-- After a clean apply, live chat matches the profile exactly, so saving is safe again.
 	sessionFailed = #remaining > 0
 	return remaining, firstError
 end
@@ -77,6 +79,9 @@ end
 
 -- Saves live chat into the selected profile. Runs at logout, on Save Now, and before
 -- switching profiles.
+--
+-- Saves even when nothing seems to differ: a category that was just switched on has no
+-- saved data to compare against yet. Categories that are switched off are dropped.
 function Profiles.SaveSelected()
 	local _, profile = Profiles.Selected()
 	if not profile or sessionFailed then
@@ -91,6 +96,7 @@ end
 -- Saves into the current profile, then applies the new one. Pass nil to follow no profile.
 -- Returns what did not apply.
 function Profiles.Select(name)
+	-- Changes since the last save belong to the old profile, so save before switching.
 	Profiles.SaveSelected()
 	db.characters[CharacterKey()] = name
 	if not name then
@@ -156,7 +162,7 @@ function Profiles.SetInclude(category, enabled)
 end
 
 local function LoadSavedVariables()
-	-- Assign the global itself: the client only writes out what ChatCopyDB points to.
+	-- Assign the global, not just `db`: at logout the client saves whatever ChatCopyDB points to.
 	ChatCopyDB = ChatCopyDB or {}
 	db = ChatCopyDB
 	db.schema = db.schema or 1
@@ -189,15 +195,19 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:SetScript("OnEvent", function(self, event, loadedAddon)
 	if event == "ADDON_LOADED" then
+		-- Fires once per addon. Saved variables are ready when it fires for ours.
 		if loadedAddon == addonName then
 			LoadSavedVariables()
 			self:UnregisterEvent(event)
 		end
 	elseif event == "PLAYER_LOGIN" then
 		self:UnregisterEvent(event)
-		-- One frame later, so other addons' login handlers, such as chat history restore, run first.
+		-- On a fresh login, chat settings are still arriving from the server around ADDON_LOADED
+		-- and would overwrite anything applied then. By PLAYER_LOGIN they're in (measured; see
+		-- design doc section 6). Deferring with After(0) lets other addons' login code run first.
 		C_Timer.After(0, ApplyAtLogin)
 	elseif event == "PLAYER_LOGOUT" then
+		-- Also fires on /reload, and chat settings can still be read here.
 		Profiles.SaveSelected()
 	end
 end)
