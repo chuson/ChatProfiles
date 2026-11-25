@@ -1,7 +1,7 @@
 std = "lua51"
 max_line_length = 120
 
--- Globals the addon creates.
+-- Globals the addon sets.
 globals = {
 	"ChatProfilesDB",
 	"SLASH_CHATPROFILES1",
@@ -31,6 +31,7 @@ read_globals = {
 	"SetChatColorNameByClass",
 	"Settings",
 	"UnitName",
+	"strlenutf8",
 }
 
 -- The test sets up its own stand-ins for game globals.

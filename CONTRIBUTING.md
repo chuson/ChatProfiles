@@ -60,6 +60,18 @@ Use frame methods (`frame:AddMessageGroup`) rather than the old `ChatFrame_*` gl
 - Run `lua tests/validate.lua` from the repository root. It checks the import validator against good and malformed profiles.
 - Everything else needs the game. Section 11 of the design doc has the steps.
 
+## Reviewing a change
+
+Review one area at a time. A pass that looks at everything at once tends to stay at one level and miss the rest.
+
+1. **Architecture:** which file does what, which way the dependencies run, and who owns each piece of state.
+2. **Size:** functions that are too long or do several jobs, and helpers, tables or parameters that don't earn their place. Check how many places call each function: a helper used once usually belongs inline.
+3. **Order:** each file and function reads from top to bottom.
+4. **Naming:** one term for each idea, and names that match what the code does.
+5. **Comments:** needed, accurate, and written in plain sentences.
+6. **Correctness:** bugs, edge cases, and text that counts bytes where the player sees letters.
+7. **Efficiency:** wasted work in code that runs often.
+
 ## Sending a change
 
 Before you open a pull request:

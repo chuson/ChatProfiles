@@ -1,16 +1,16 @@
--- Export strings, and checking imported ones. An imported string is untrusted, so
--- every field is checked and anything unexpected rejects the whole string: nothing
--- is clamped or quietly fixed, apart from removing "|" from names.
+-- Builds export strings and checks imported ones. An imported string is untrusted, so every
+-- field is checked, and anything unexpected rejects the whole string. Nothing is clamped or
+-- quietly fixed, except that "|" is removed from names.
 
 local _, ns = ...
 
 local ExportString = {}
 ns.ExportString = ExportString
 
--- Exports are CBOR, then Base64 so they paste cleanly. Bump the number if the format changes.
+-- Exports are CBOR encoded as Base64, so they paste cleanly. Bump the number if the format changes.
 local EXPORT_PREFIX = "ChatProfiles1:"
 local MAX_PASTE_LENGTH = 64 * 1024 -- checked before decoding, so a huge paste can't stall the game
-local MAX_TEXT_LENGTH = 50
+local MAX_TEXT_BYTES = 200 -- a letter outside English can take up to 4 bytes
 local MAX_LIST_LENGTH = 100 -- message groups or channels in one tab
 local MAX_COLORS = 200
 local MIN_FONT_SIZE, MAX_FONT_SIZE = 6, 40
@@ -40,7 +40,7 @@ local function Check(ok, reason)
 	end
 end
 
--- For putting untrusted values into an error message that the panel shows.
+-- Makes an untrusted value safe to show in an error message on the panel.
 local function SafeText(value)
 	return (tostring(value):gsub("|", ""):sub(1, 30))
 end
@@ -51,7 +51,7 @@ local function CheckFields(t, allowed, what)
 	end
 end
 
--- Keys 1 to n with no gaps and nothing else. Doesn't rely on #t, which is unreliable with gaps.
+-- A list needs keys 1 to n with no gaps and no other keys. #t isn't used, since it's unreliable with gaps.
 local function CheckList(t, maxLength, what)
 	Check(type(t) == "table", what .. " is not a list")
 	local count = 0
@@ -73,10 +73,6 @@ local function CheckColor(t, what)
 	Check(valid, what .. " needs red, green and blue values between 0 and 1")
 end
 
-local function CheckOpacity(value, what)
-	Check(IsBetweenZeroAndOne(value), what .. " must be between 0 and 1")
-end
-
 local function CheckBoolean(value, what)
 	Check(value == nil or type(value) == "boolean", what .. " must be true or false")
 end
@@ -85,7 +81,7 @@ end
 local function CleanName(value, what)
 	Check(type(value) == "string", what .. " is not text")
 	local name = value:gsub("|", "")
-	Check(name ~= "" and #name <= MAX_TEXT_LENGTH, what .. " is empty or too long")
+	Check(name ~= "" and #name <= MAX_TEXT_BYTES, what .. " is empty or too long")
 	return name
 end
 
@@ -115,7 +111,7 @@ local function CleanWindow(window, what)
 		clean.r, clean.g, clean.b = window.r, window.g, window.b
 	end
 	if window.a ~= nil then
-		CheckOpacity(window.a, what .. " opacity")
+		Check(IsBetweenZeroAndOne(window.a), what .. " opacity must be between 0 and 1")
 		clean.a = window.a
 	end
 
@@ -127,7 +123,7 @@ local function CleanWindow(window, what)
 		clean.messageGroups = {}
 		for i = 1, #window.messageGroups do
 			local group = window.messageGroups[i]
-			local valid = type(group) == "string" and #group <= MAX_TEXT_LENGTH and group:match("^[%u%d_]+$")
+			local valid = type(group) == "string" and #group <= MAX_TEXT_BYTES and group:match("^[%u%d_]+$")
 			Check(valid, what .. " has an invalid message group")
 			clean.messageGroups[i] = group
 		end

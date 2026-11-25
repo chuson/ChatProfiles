@@ -115,7 +115,7 @@ Rejects("a name that is only |", function(p)
 	p.windows[3].name = "||"
 end)
 Rejects("a name that is too long", function(p)
-	p.windows[3].name = string.rep("a", 51)
+	p.windows[3].name = string.rep("a", 201)
 end)
 Rejects("a fractional font size", function(p)
 	p.windows[1].fontSize = 12.5

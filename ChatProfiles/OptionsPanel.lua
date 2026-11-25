@@ -1,4 +1,4 @@
--- The options panel, under Esc > Options > AddOns > Chat Profiles, also opened with /chatprofiles.
+-- The options panel. It's under Esc > Options > AddOns > Chat Profiles, and /chatprofiles opens it too.
 
 local _, ns = ...
 local Profiles, ExportString = ns.Profiles, ns.ExportString
@@ -17,7 +17,7 @@ local panel = CreateFrame("Frame")
 local settingsCategory = Settings.RegisterCanvasLayoutCategory(panel, "Chat Profiles")
 Settings.RegisterAddOnCategory(settingsCategory)
 
--- Built the first time the panel opens. Most sessions never open it.
+-- The widgets are built the first time the panel opens, since most sessions never open it.
 local widgets
 
 local function Label(text, font, anchor, x, y)
@@ -34,18 +34,6 @@ local function Button(text, width, onClick)
 	button:SetSize(width, 22)
 	button:SetScript("OnClick", onClick)
 	return button
-end
-
--- Delete takes a second click within a few seconds, since there is no undo. Every refresh
--- cancels a pending confirm, so it can't carry over to a different profile.
-local deleteConfirmTimer
-
-local function CancelDeleteConfirm()
-	if deleteConfirmTimer then
-		deleteConfirmTimer:Cancel()
-		deleteConfirmTimer = nil
-	end
-	widgets.delete:SetText("Delete")
 end
 
 local function StatusText(name, applyFailed, differences)
@@ -76,6 +64,18 @@ local function DetailText(differences, duplicateTabNames)
 	return table.concat(lines, "\n")
 end
 
+-- Delete takes a second click within a few seconds, since there is no undo. Every refresh
+-- cancels a pending confirm, so it can't carry over to a different profile.
+local deleteConfirmTimer
+
+local function CancelDeleteConfirm()
+	if deleteConfirmTimer then
+		deleteConfirmTimer:Cancel()
+		deleteConfirmTimer = nil
+	end
+	widgets.delete:SetText("Delete")
+end
+
 local function Refresh()
 	local name, profile = Profiles.Selected()
 	local applyFailed = Profiles.LastApplyFailed()
@@ -92,7 +92,7 @@ local function Refresh()
 	widgets.export:SetEnabled(profile ~= nil)
 	widgets.saveNow:SetEnabled(profile ~= nil and not applyFailed)
 
-	-- Both nil when there's no profile.
+	-- Both are nil when this character has no profile.
 	local differences, duplicateTabNames = Profiles.Differences()
 	widgets.status:SetText(StatusText(name, applyFailed, differences))
 	widgets.details:SetText(DetailText(differences or {}, duplicateTabNames or {}))
@@ -151,15 +151,15 @@ local function BuildWidgets()
 	local categoriesLabel = Label("Includes:", nil, hint, 0, -18)
 	widgets.checkboxes = {}
 	local previous
-	for _, info in ipairs(CATEGORIES) do
+	for _, category in ipairs(CATEGORIES) do
 		local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
 		if previous then
 			checkbox:SetPoint("LEFT", previous.Text, "RIGHT", 12, 0)
 		else
 			checkbox:SetPoint("LEFT", categoriesLabel, "RIGHT", 8, 0)
 		end
-		checkbox.Text:SetText(info.label)
-		checkbox.category = info.key
+		checkbox.Text:SetText(category.label)
+		checkbox.category = category.key
 		checkbox:SetScript("OnClick", function(self)
 			Profiles.SetCategoryEnabled(self.category, self:GetChecked())
 			Refresh()
@@ -168,12 +168,12 @@ local function BuildWidgets()
 		previous = checkbox
 	end
 
-	-- One name box serves Save as new, Rename and Import.
+	-- One name box serves Save as new profile, Rename and Import.
 	local nameLabel = Label("Name:", nil, categoriesLabel, 0, -26)
 	widgets.nameBox = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
 	widgets.nameBox:SetPoint("LEFT", nameLabel, "RIGHT", 14, 0)
 	widgets.nameBox:SetSize(180, 20)
-	-- Otherwise the box grabs the keyboard as soon as the panel opens.
+	-- Without this, the box grabs the keyboard as soon as the panel opens.
 	widgets.nameBox:SetAutoFocus(false)
 	widgets.nameBox:SetMaxLetters(Profiles.MAX_PROFILE_NAME_LENGTH)
 
@@ -234,9 +234,9 @@ local function BuildWidgets()
 	widgets.export:SetPoint("LEFT", widgets.saveNow, "RIGHT", 6, 0)
 
 	local import = Button("Import", 100, function()
-		local profile, importError = ExportString.Import(pasteBox.EditBox:GetText())
+		local profile, importReason = ExportString.Import(pasteBox.EditBox:GetText())
 		if not profile then
-			ShowMessage("Couldn't import: " .. importError .. ".")
+			ShowMessage("Couldn't import: " .. importReason .. ".")
 			return
 		end
 		local name, reason = Profiles.AddImported(widgets.nameBox:GetText(), profile)

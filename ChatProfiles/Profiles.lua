@@ -1,4 +1,5 @@
--- Named sets of chat settings that characters use. Owns ChatProfilesDB, the login apply and the logout save.
+-- Profiles are named sets of chat settings that characters use. This file owns ChatProfilesDB,
+-- the login apply and the logout save.
 
 local addonName, ns = ...
 local ChatSettings = ns.ChatSettings
@@ -7,30 +8,27 @@ local Profiles = {}
 ns.Profiles = Profiles
 
 Profiles.MAX_PROFILE_NAME_LENGTH = 50
-local MAX_PROFILE_NAME_LENGTH = Profiles.MAX_PROFILE_NAME_LENGTH
 
 local db
 
--- Set when an apply leaves differences. A half-applied setup must never be saved into
--- a profile that other characters share, so saves are skipped until an apply succeeds.
+-- Set when an apply leaves differences. Other characters share the profile, so a half-applied
+-- setup must never overwrite it. Saves are skipped until an apply succeeds.
 local lastApplyFailed = false
 
 local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
 
--- A new table each call, since profiles edit theirs in place.
-local function DefaultCategories()
-	return { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
-end
-
 local function CheckNewName(name)
 	-- Strip "|" (escape codes) before trimming, so "a |" doesn't leave a trailing space.
 	name = (name or ""):gsub("|", ""):match("^%s*(.-)%s*$")
-	if name == "" then
+	-- Count letters, as the Name box does. # counts bytes, and a letter outside English takes several.
+	local letters = strlenutf8(name)
+	local limit = Profiles.MAX_PROFILE_NAME_LENGTH
+	if letters == 0 then
 		return nil, "Give the profile a name first."
-	elseif #name > MAX_PROFILE_NAME_LENGTH then
-		return nil, "That name is too long. Names can be up to " .. MAX_PROFILE_NAME_LENGTH .. " characters."
+	elseif letters > limit then
+		return nil, "That name is too long. Names can be up to " .. limit .. " characters."
 	elseif db.profiles[name] then
 		return nil, 'You already have a profile called "' .. name .. '".'
 	end
@@ -80,8 +78,8 @@ end
 -- Saves the live settings into the selected profile. Runs at logout, on Save now, and before
 -- switching profiles.
 --
--- Saves even when nothing seems to differ: a category that was just turned on has no
--- saved data to compare against yet. Categories that are turned off are dropped.
+-- Saves even when nothing seems to differ. A category that was just turned on has no saved
+-- data yet, so the comparison can't see its changes. Categories that are turned off are dropped.
 function Profiles.SaveSelected()
 	local _, profile = Profiles.Selected()
 	if not profile or lastApplyFailed then
@@ -92,7 +90,7 @@ function Profiles.SaveSelected()
 	profile.colors = live.colors
 end
 
--- Saves into the current profile, then applies the new one. Pass nil to use no profile.
+-- Saves into the selected profile, then applies the new one. Pass nil to use no profile.
 -- Returns what did not apply.
 function Profiles.Select(name)
 	-- Changes since the last save belong to the old profile, so save before switching.
@@ -104,19 +102,34 @@ function Profiles.Select(name)
 	return Apply(db.profiles[name])
 end
 
--- Makes the live settings a new profile and uses it. The previous profile is left as it was.
+-- Saves the live settings as a new profile and switches this character to it. The previous
+-- profile is left unchanged.
 function Profiles.SaveAsNew(name)
 	local newName, reason = CheckNewName(name)
 	if not newName then
 		return nil, reason
 	end
-	local categories = DefaultCategories()
+	-- Start from the selected profile's categories, so one that was turned off on purpose stays off.
+	local _, selected = Profiles.Selected()
+	local categories = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
+	if selected then
+		for category, enabled in pairs(selected.categories) do
+			categories[category] = enabled
+		end
+	end
 	local live = ChatSettings.Read(categories)
 	db.profiles[newName] = { categories = categories, windows = live.windows, colors = live.colors }
 	db.profileByCharacter[CharacterKey()] = newName
 	-- The new profile is exactly the live setup, so nothing half-applied is left to protect.
 	lastApplyFailed = false
 	return newName
+end
+
+function Profiles.SetCategoryEnabled(category, enabled)
+	local _, profile = Profiles.Selected()
+	if profile then
+		profile.categories[category] = enabled
+	end
 end
 
 -- Adds an imported profile. It is not applied until a character selects it.
@@ -153,15 +166,8 @@ function Profiles.Delete(name)
 	end
 end
 
-function Profiles.SetCategoryEnabled(category, enabled)
-	local _, profile = Profiles.Selected()
-	if profile then
-		profile.categories[category] = enabled
-	end
-end
-
 local function LoadSavedVariables()
-	-- Assign the global, not just `db`: at logout the client saves whatever ChatProfilesDB points to.
+	-- Assign the global, not just `db`: at logout the client saves whatever table the global holds.
 	ChatProfilesDB = ChatProfilesDB or {}
 	db = ChatProfilesDB
 	db.schema = db.schema or 1
@@ -194,7 +200,7 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:SetScript("OnEvent", function(self, event, loadedAddon)
 	if event == "ADDON_LOADED" then
-		-- Fires once per addon. Saved variables are ready when it fires for ours.
+		-- This fires once for each addon. Our saved variables are ready when it fires for this one.
 		if loadedAddon == addonName then
 			LoadSavedVariables()
 			self:UnregisterEvent(event)
@@ -202,11 +208,12 @@ events:SetScript("OnEvent", function(self, event, loadedAddon)
 	elseif event == "PLAYER_LOGIN" then
 		self:UnregisterEvent(event)
 		-- On a fresh login, chat settings are still arriving from the server around ADDON_LOADED
-		-- and would overwrite anything applied then. By PLAYER_LOGIN they're in (measured; see
-		-- design doc section 6). Deferring with After(0) lets other addons' login code run first.
+		-- and would overwrite anything applied then. They have all arrived by PLAYER_LOGIN, as
+		-- measured for open question 1 in the design doc. Deferring with After(0) lets other addons'
+		-- login code run first.
 		C_Timer.After(0, ApplyAtLogin)
 	elseif event == "PLAYER_LOGOUT" then
-		-- Also fires on /reload, and chat settings can still be read here.
+		-- This also fires on /reload. Chat settings can still be read at this point.
 		Profiles.SaveSelected()
 	end
 end)
