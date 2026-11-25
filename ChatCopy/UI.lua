@@ -89,7 +89,6 @@ local function SelectProfile(name)
 end
 
 -- Shows the result of a Profiles call that returns a name, or nil and a reason.
--- The call goes last in the argument list so that both of its results arrive.
 local function Report(successText, name, reason)
 	ShowMessage(name and successText:format(name) or reason)
 	Refresh()
@@ -155,32 +154,34 @@ local function Build()
 	ui.name:SetPoint("LEFT", nameLabel, "RIGHT", 14, 0)
 	ui.name:SetSize(180, 20)
 	ui.name:SetAutoFocus(false)
-	ui.name:SetMaxLetters(50)
+	ui.name:SetMaxLetters(Profiles.MAX_NAME_LENGTH)
 
 	local saveAsNew = Button("Save as new profile", 150, function()
-		Report('Saved your chat settings as "%s". This character now uses it.', Profiles.SaveAsNew(ui.name:GetText()))
+		local name, reason = Profiles.SaveAsNew(ui.name:GetText())
+		Report('Saved your chat settings as "%s". This character now uses it.', name, reason)
 	end)
 	saveAsNew:SetPoint("LEFT", ui.name, "RIGHT", 10, 0)
 
 	ui.rename = Button("Rename", 80, function()
-		local name = Profiles.Selected()
-		Report('Renamed to "%s".', Profiles.Rename(name, ui.name:GetText()))
+		local oldName = Profiles.Selected()
+		local name, reason = Profiles.Rename(oldName, ui.name:GetText())
+		Report('Renamed to "%s".', name, reason)
 	end)
 	ui.rename:SetPoint("LEFT", saveAsNew, "RIGHT", 6, 0)
 
 	-- Deleting takes a second click within a few seconds, since there is no undo.
-	local deleteArmed = false
+	local confirmTimer
 	ui.delete = Button("Delete", 80, function(self)
-		if not deleteArmed then
-			deleteArmed = true
+		if not confirmTimer then
 			self:SetText("Confirm")
-			C_Timer.After(3, function()
-				deleteArmed = false
+			confirmTimer = C_Timer.NewTimer(3, function()
+				confirmTimer = nil
 				self:SetText("Delete")
 			end)
 			return
 		end
-		deleteArmed = false
+		confirmTimer:Cancel()
+		confirmTimer = nil
 		self:SetText("Delete")
 		local name = Profiles.Selected()
 		Profiles.Delete(name)
@@ -219,12 +220,13 @@ local function Build()
 	ui.export:SetPoint("LEFT", ui.saveNow, "RIGHT", 6, 0)
 
 	local import = Button("Import", 100, function()
-		local profile, reason = Codec.Import(pasteBox.EditBox:GetText())
+		local profile, importError = Codec.Import(pasteBox.EditBox:GetText())
 		if not profile then
-			ShowMessage("Couldn't import: " .. reason .. ".")
+			ShowMessage("Couldn't import: " .. importError .. ".")
 			return
 		end
-		Report('Imported "%s". Choose it from the Profile menu to use it.', Profiles.Add(ui.name:GetText(), profile))
+		local name, reason = Profiles.Add(ui.name:GetText(), profile)
+		Report('Imported "%s". Choose it from the Profile menu to use it.', name, reason)
 	end)
 	import:SetPoint("LEFT", ui.export, "RIGHT", 6, 0)
 

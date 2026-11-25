@@ -6,12 +6,13 @@ local Chat = ns.Chat
 local Profiles = {}
 ns.Profiles = Profiles
 
-local MAX_NAME_LENGTH = 50
+Profiles.MAX_NAME_LENGTH = 50
+local MAX_NAME_LENGTH = Profiles.MAX_NAME_LENGTH
 
 local db
 
 -- Set when an apply leaves differences. A half-applied setup must never be saved into
--- a profile that other characters share, so every save is skipped for the rest of the session.
+-- a profile that other characters share, so saves are skipped until an apply succeeds.
 local sessionFailed = false
 
 local function CharacterKey()
@@ -23,7 +24,7 @@ local function DefaultInclude()
 end
 
 local function CheckNewName(name)
-	name = (name or ""):match("^%s*(.-)%s*$"):gsub("|", "")
+	name = (name or ""):gsub("|", ""):match("^%s*(.-)%s*$")
 	if name == "" then
 		return nil, "Type a name in the Name box first."
 	elseif #name > MAX_NAME_LENGTH then
@@ -34,12 +35,12 @@ local function CheckNewName(name)
 	return name
 end
 
+-- Returns what did not apply, and the first error a change raised, if any.
 local function Apply(profile)
-	local remaining = Chat.Apply(profile)
-	if #remaining > 0 then
-		sessionFailed = true
-	end
-	return remaining
+	local remaining, firstError = Chat.Apply(profile)
+	-- After a clean apply, live chat is exactly the profile, so saving is safe again.
+	sessionFailed = #remaining > 0
+	return remaining, firstError
 end
 
 function Profiles.Names()
@@ -165,16 +166,20 @@ end
 
 local function ApplyAtLogin()
 	local name, profile = Profiles.Selected()
-	if not profile or #Chat.Diff(Chat.Read(profile.include), profile) == 0 then
+	if not profile then
 		return
 	end
-	if #Apply(profile) > 0 then
+	local remaining, firstError = Apply(profile)
+	if #remaining > 0 then
 		print(
 			'ChatCopy: Some settings from "'
 				.. name
 				.. "\" couldn't be applied, so changes won't be saved until you reload or log in again."
 				.. " Type /chatcopy for details."
 		)
+		if firstError then
+			print("ChatCopy: The first error was: " .. tostring(firstError))
+		end
 	end
 end
 

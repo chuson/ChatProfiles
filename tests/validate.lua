@@ -1,5 +1,5 @@
 -- Checks the import validator against good and malformed profiles.
--- Run from the repository root with Lua 5.1: lua tests/validate.lua
+-- Run from the repository root with Lua 5.1 or later: lua tests/validate.lua
 
 -- Stand-ins for the two game globals the validator reads.
 Constants = { ChatFrameConstants = { MaxChatWindows = 10 } }
@@ -143,6 +143,12 @@ Rejects("a lowercase message group", function(p)
 end)
 Rejects("a message group that is a number", function(p)
 	p.windows[1].groups[1] = 5
+end)
+Rejects("a gap in the message groups", function(p)
+	p.windows[1].groups = { [1] = "SAY", [3] = "GUILD", [4] = "PARTY" }
+end)
+Rejects("message groups with a text key", function(p)
+	p.windows[1].groups.extra = "SAY"
 end)
 Rejects("too many message groups", function(p)
 	for i = 1, 101 do

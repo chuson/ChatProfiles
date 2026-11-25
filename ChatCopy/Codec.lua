@@ -48,11 +48,16 @@ local function CheckFields(t, allowed, what)
 	end
 end
 
+-- A list here means keys 1 to n with nothing missing and nothing else.
 local function CheckList(t, maxLength, what)
 	Check(type(t) == "table", what .. " is not a list")
-	Check(#t <= maxLength, "too many entries in " .. what)
-	for k in pairs(t) do
-		Check(type(k) == "number" and k >= 1 and k <= #t and k % 1 == 0, what .. " is not a list")
+	local count = 0
+	for _ in pairs(t) do
+		count = count + 1
+	end
+	Check(count <= maxLength, "too many entries in " .. what)
+	for i = 1, count do
+		Check(t[i] ~= nil, what .. " is not a list")
 	end
 end
 

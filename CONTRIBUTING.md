@@ -5,7 +5,7 @@
 ## Layout
 
 - `ChatCopy/` is the addon itself. Copy or link it into the client's `Interface\AddOns` folder.
-- `tests/` holds tests that run outside the game with plain Lua 5.1.
+- `tests/` holds tests that run outside the game with plain Lua 5.1 or later.
 - `tools/` holds throwaway diagnostics, such as the login probe. Nothing in it ships.
 
 ## Files and their boundaries
@@ -13,7 +13,7 @@
 | File | Does | Never |
 | --- | --- | --- |
 | `Chat.lua` | Reads the live chat setup, diffs it against a profile, applies a profile. | Prints, or touches saved data. |
-| `Codec.lua` | Export strings, and validation of imported ones. | Calls game APIs other than `C_EncodingUtil`, so it can be tested outside the game. |
+| `Codec.lua` | Export strings, and validation of imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the test can stand in for them outside the game. |
 | `Profiles.lua` | Owns `ChatCopyDB`, the login apply and the logout save. | Builds UI. |
 | `UI.lua` | The options panel and `/chatcopy`. | Changes chat or saved data directly; it goes through `Profiles`. |
 

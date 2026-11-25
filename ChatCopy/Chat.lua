@@ -27,10 +27,6 @@ local function IsCustomKey(key)
 	return key:sub(1, 5) == "name:"
 end
 
-local function Itself(value)
-	return value
-end
-
 -- Most chat types have a display name among the client's global strings, such as SAY = "Say".
 local function ChatTypeName(chatType)
 	local name = _G[chatType]
@@ -83,9 +79,10 @@ end
 
 -- Returns the live setup in the same shape as a profile, leaving out categories that
 -- `include` turns off. Tabs that share a name are listed in `duplicates` and only the
--- first is used.
+-- first is used. `ids` maps each window's key to its chat frame number; it is kept apart
+-- from `windows` because those are saved into profiles and frame numbers differ per character.
 function Chat.Read(include)
-	local setup = { windows = {}, duplicates = {} }
+	local setup = { windows = {}, ids = {}, duplicates = {} }
 	local dockOrder = {}
 	local seen = {}
 	local firstCustom = FirstCustomId()
@@ -101,6 +98,7 @@ function Chat.Read(include)
 				table.insert(setup.duplicates, name)
 			else
 				seen[key] = true
+				setup.ids[key] = id
 				local window = { key = key, name = name }
 				if include.look then
 					window.size, window.r, window.g, window.b, window.a = size, r, g, b, a
@@ -125,19 +123,6 @@ function Chat.Read(include)
 		setup.colors = ReadColors()
 	end
 	return setup
-end
-
-local function FindWindowId(key)
-	if not IsCustomKey(key) then
-		return tonumber(key:sub(4))
-	end
-	local wanted = key:sub(6)
-	for id = FirstCustomId(), MAX_WINDOWS do
-		local name, _, _, _, _, _, shown, _, docked = GetChatWindowInfo(id)
-		if name == wanted and (shown or docked) then
-			return id
-		end
-	end
 end
 
 -- Returns what is in `want` but not `have`, and what is in `have` but not `want`.
@@ -205,17 +190,12 @@ local LOOK = {
 	},
 }
 
-local function DiffWindow(have, want, include, add)
-	local id = FindWindowId(want.key)
-	local function Frame()
-		return _G["ChatFrame" .. id]
-	end
-
+local function DiffWindow(frame, have, want, include, add)
 	if include.look then
 		for _, setting in ipairs(LOOK) do
 			if setting.differs(have, want) then
 				add(have.name .. ": " .. setting.label, function()
-					setting.apply(Frame(), want)
+					setting.apply(frame, want)
 				end)
 			end
 		end
@@ -226,15 +206,17 @@ local function DiffWindow(have, want, include, add)
 	end
 
 	if want.groups and have.groups then
-		local missing, extra = SetDifference(have.groups, want.groups, Itself)
+		local missing, extra = SetDifference(have.groups, want.groups, function(group)
+			return group
+		end)
 		for _, group in ipairs(missing) do
 			add(have.name .. ": no " .. ChatTypeName(group) .. " messages", function()
-				Frame():AddMessageGroup(group)
+				frame:AddMessageGroup(group)
 			end)
 		end
 		for _, group in ipairs(extra) do
 			add(have.name .. ": extra " .. ChatTypeName(group) .. " messages", function()
-				Frame():RemoveMessageGroup(group)
+				frame:RemoveMessageGroup(group)
 			end)
 		end
 	end
@@ -244,12 +226,12 @@ local function DiffWindow(have, want, include, add)
 		for _, channel in ipairs(missing) do
 			local name = ChannelName(channel)
 			add(have.name .. ": no " .. name .. " channel", function()
-				Frame():AddChannel(name)
+				frame:AddChannel(name)
 			end)
 		end
 		for _, channel in ipairs(extra) do
 			add(have.name .. ": extra " .. channel.name .. " channel", function()
-				Frame():RemoveChannel(channel.name)
+				frame:RemoveChannel(channel.name)
 			end)
 		end
 	end
@@ -287,7 +269,7 @@ function Chat.Diff(live, profile)
 	local include = profile.include
 	local changes = {}
 	local function Add(text, run, changesTabs)
-		table.insert(changes, { text = text, run = run, changesTabs = changesTabs })
+		table.insert(changes, { text = text, run = run, changesTabs = changesTabs or false })
 	end
 
 	local wanted = {}
@@ -299,9 +281,9 @@ function Chat.Diff(live, profile)
 	if include.tabs then
 		for _, have in ipairs(live.windows) do
 			if IsCustomKey(have.key) and not wanted[have.key] then
-				local id = FindWindowId(have.key)
+				local frame = _G["ChatFrame" .. live.ids[have.key]]
 				Add('Extra tab "' .. have.name .. '"', function()
-					FCF_Close(_G["ChatFrame" .. id])
+					FCF_Close(frame)
 				end, true)
 			end
 		end
@@ -315,7 +297,7 @@ function Chat.Diff(live, profile)
 	for _, want in ipairs(profile.windows) do
 		local have = liveByKey[want.key]
 		if have then
-			DiffWindow(have, want, include, Add)
+			DiffWindow(_G["ChatFrame" .. live.ids[want.key]], have, want, include, Add)
 		elseif include.tabs and IsCustomKey(want.key) then
 			Add('Missing tab "' .. want.name .. '"', function()
 				FCF_OpenNewWindow(want.name, true)
@@ -330,20 +312,25 @@ function Chat.Diff(live, profile)
 	return changes
 end
 
--- Applies a profile and returns what still differs afterward (empty means success).
--- Each change runs on its own, so one failing call does not stop the rest, and a call
--- that errors or silently does nothing shows up the same way: in the returned list.
+-- Applies a profile and returns what still differs afterward (empty means success), plus
+-- the first error a change raised, if any. Each change runs on its own, so one failing call
+-- does not stop the rest, and a call that errors or silently does nothing shows up the same
+-- way: in the returned list.
 function Chat.Apply(profile)
-	local function Run(changes, tabChanges)
-		for _, change in ipairs(changes) do
-			if (change.changesTabs or false) == tabChanges then
-				pcall(change.run)
+	local firstError
+	local function Run(runTabChanges)
+		for _, change in ipairs(Chat.Diff(Chat.Read(profile.include), profile)) do
+			if change.changesTabs == runTabChanges then
+				local ok, err = pcall(change.run)
+				if not ok then
+					firstError = firstError or err
+				end
 			end
 		end
 	end
 
 	-- First open and close tabs, then diff again, so the rest also covers whatever a new tab starts with.
-	Run(Chat.Diff(Chat.Read(profile.include), profile), true)
-	Run(Chat.Diff(Chat.Read(profile.include), profile), false)
-	return Chat.Diff(Chat.Read(profile.include), profile)
+	Run(true)
+	Run(false)
+	return Chat.Diff(Chat.Read(profile.include), profile), firstError
 end
