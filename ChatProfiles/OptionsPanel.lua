@@ -36,10 +36,51 @@ local function Button(text, width, onClick)
 	return button
 end
 
+-- Delete takes a second click within a few seconds, since there is no undo. Every refresh
+-- cancels a pending confirm, so it can't carry over to a different profile.
+local deleteConfirmTimer
+
+local function CancelDeleteConfirm()
+	if deleteConfirmTimer then
+		deleteConfirmTimer:Cancel()
+		deleteConfirmTimer = nil
+	end
+	widgets.delete:SetText("Delete")
+end
+
+local function StatusText(name, applyFailed, differences)
+	if not name then
+		return "This character isn't using a profile."
+	elseif applyFailed then
+		return "Some settings couldn't be applied, so changes won't be saved until you reload or log in again."
+	elseif #differences == 0 then
+		return "Your chat settings match the profile."
+	elseif #differences == 1 then
+		return "1 unsaved change. It will be saved when you log out."
+	end
+	return #differences .. " unsaved changes. They'll be saved when you log out."
+end
+
+local function DetailText(differences, duplicateTabNames)
+	local lines = {}
+	for i = 1, math.min(#differences, MAX_DETAIL_LINES) do
+		table.insert(lines, differences[i].text)
+	end
+	if #differences > MAX_DETAIL_LINES then
+		table.insert(lines, "...and " .. (#differences - MAX_DETAIL_LINES) .. " more")
+	end
+	if #duplicateTabNames > 0 then
+		local names = table.concat(duplicateTabNames, ", ")
+		table.insert(lines, "Only the first tab with each of these names is used: " .. names)
+	end
+	return table.concat(lines, "\n")
+end
+
 local function Refresh()
 	local name, profile = Profiles.Selected()
 	local applyFailed = Profiles.LastApplyFailed()
 
+	CancelDeleteConfirm()
 	-- The dropdown doesn't notice profile changes on its own.
 	widgets.dropdown:GenerateMenu()
 	for _, checkbox in ipairs(widgets.checkboxes) do
@@ -53,32 +94,8 @@ local function Refresh()
 
 	-- Both nil when there's no profile.
 	local differences, duplicateTabNames = Profiles.Differences()
-	local status
-	if not name then
-		status = "This character isn't using a profile."
-	elseif applyFailed then
-		status = "Some settings couldn't be applied, so changes won't be saved until you reload or log in again."
-	elseif #differences == 0 then
-		status = "Your chat settings match the profile."
-	elseif #differences == 1 then
-		status = "1 unsaved change. It will be saved when you log out."
-	else
-		status = #differences .. " unsaved changes. They'll be saved when you log out."
-	end
-	widgets.status:SetText(status)
-
-	local lines = {}
-	for i = 1, math.min(#(differences or {}), MAX_DETAIL_LINES) do
-		table.insert(lines, differences[i].text)
-	end
-	if differences and #differences > MAX_DETAIL_LINES then
-		table.insert(lines, "...and " .. (#differences - MAX_DETAIL_LINES) .. " more")
-	end
-	if duplicateTabNames and #duplicateTabNames > 0 then
-		local names = table.concat(duplicateTabNames, ", ")
-		table.insert(lines, "Only the first tab with each of these names is used: " .. names)
-	end
-	widgets.details:SetText(table.concat(lines, "\n"))
+	widgets.status:SetText(StatusText(name, applyFailed, differences))
+	widgets.details:SetText(DetailText(differences or {}, duplicateTabNames or {}))
 end
 
 local function ShowMessage(text)
@@ -173,20 +190,12 @@ local function BuildWidgets()
 	end)
 	widgets.rename:SetPoint("LEFT", saveAsNew, "RIGHT", 6, 0)
 
-	-- Deleting takes a second click within a few seconds, since there is no undo.
-	local confirmTimer
 	widgets.delete = Button("Delete", 80, function(self)
-		if not confirmTimer then
+		if not deleteConfirmTimer then
 			self:SetText("Confirm")
-			confirmTimer = C_Timer.NewTimer(3, function()
-				confirmTimer = nil
-				self:SetText("Delete")
-			end)
+			deleteConfirmTimer = C_Timer.NewTimer(3, CancelDeleteConfirm)
 			return
 		end
-		confirmTimer:Cancel()
-		confirmTimer = nil
-		self:SetText("Delete")
 		local name = Profiles.Selected()
 		Profiles.Delete(name)
 		ShowMessage('Deleted "' .. name .. '". Your chat settings stay as they are.')

@@ -28,7 +28,7 @@ local function CheckNewName(name)
 	-- Strip "|" (escape codes) before trimming, so "a |" doesn't leave a trailing space.
 	name = (name or ""):gsub("|", ""):match("^%s*(.-)%s*$")
 	if name == "" then
-		return nil, "Type a name in the Name box first."
+		return nil, "Give the profile a name first."
 	elseif #name > MAX_PROFILE_NAME_LENGTH then
 		return nil, "That name is too long. Names can be up to " .. MAX_PROFILE_NAME_LENGTH .. " characters."
 	elseif db.profiles[name] then
@@ -85,12 +85,11 @@ end
 function Profiles.SaveSelected()
 	local _, profile = Profiles.Selected()
 	if not profile or lastApplyFailed then
-		return false
+		return
 	end
 	local live = ChatSettings.Read(profile.categories)
 	profile.windows = live.windows
 	profile.colors = live.colors
-	return true
 end
 
 -- Saves into the current profile, then applies the new one. Pass nil to use no profile.

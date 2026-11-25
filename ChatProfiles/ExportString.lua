@@ -89,7 +89,7 @@ local function CleanName(value, what)
 	return name
 end
 
-local function ValidateWindow(window, what)
+local function CleanWindow(window, what)
 	Check(type(window) == "table", what .. " is not a table")
 	CheckFields(window, WINDOW_FIELDS, what)
 
@@ -149,7 +149,7 @@ local function ValidateWindow(window, what)
 	return clean
 end
 
-local function ValidateColors(colors)
+local function CleanColors(colors)
 	Check(type(colors) == "table", "chat colors are not a table")
 	local clean, count = {}, 0
 	for chatType, color in pairs(colors) do
@@ -180,7 +180,7 @@ local function CleanProfile(data)
 	CheckList(data.windows, Constants.ChatFrameConstants.MaxChatWindows, "tabs")
 	local windows, seen = {}, {}
 	for i = 1, #data.windows do
-		local window = ValidateWindow(data.windows[i], "tab " .. i)
+		local window = CleanWindow(data.windows[i], "tab " .. i)
 		Check(not seen[window.key], "two tabs are named " .. window.name)
 		seen[window.key] = true
 		windows[i] = window
@@ -188,7 +188,7 @@ local function CleanProfile(data)
 
 	local profile = { categories = categories, windows = windows }
 	if data.colors ~= nil then
-		profile.colors = ValidateColors(data.colors)
+		profile.colors = CleanColors(data.colors)
 	end
 	return profile
 end

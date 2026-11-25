@@ -26,33 +26,6 @@ local function FirstCustomWindow()
 	return C_ChatInfo.GetNumReservedChatWindows() + 1
 end
 
-local function IsCustomKey(key)
-	return key:sub(1, 5) == "name:"
-end
-
--- Most chat types have a display name in the global strings, e.g. SAY = "Say".
-local function ChatTypeName(chatType)
-	local name = _G[chatType]
-	return type(name) == "string" and name or chatType
-end
-
--- Zone channels (General, Trade) have localized names, so match them by ID.
--- Custom channels have no ID and are matched by name.
-local function ChannelKey(channel)
-	if channel.zoneChannelID > 0 then
-		return channel.zoneChannelID
-	end
-	return channel.name:lower()
-end
-
--- The profile may come from a client in another language, so ask this one what the zone channel is called.
-local function ClientChannelName(channel)
-	if channel.zoneChannelID > 0 then
-		return C_ChatInfo.GetChannelShortcutForChannelID(channel.zoneChannelID) or channel.name
-	end
-	return channel.name
-end
-
 -- Channels and message groups are sorted so an unchanged setup saves and exports the same way every time.
 local function ReadChannels(windowNumber)
 	local channels = {}
@@ -83,6 +56,21 @@ local function ReadColors()
 	return colors
 end
 
+local function ReadWindow(windowNumber, key, categories)
+	local name, fontSize, r, g, b, a, _, locked = GetChatWindowInfo(windowNumber)
+	local window = { key = key, name = name }
+	if categories.fontAndBackground then
+		window.fontSize, window.r, window.g, window.b, window.a = fontSize, r, g, b, a
+		window.locked = locked and true or false -- the API returns 1 or nil
+	end
+	-- The combat log uses its own filters, not message groups.
+	if categories.messagesAndChannels and windowNumber ~= COMBAT_LOG_WINDOW then
+		window.messageGroups = ReadMessageGroups(windowNumber)
+		window.channels = ReadChannels(windowNumber)
+	end
+	return window
+end
+
 -- Returns the live settings in the same shape as a profile, leaving out categories that are
 -- turned off. If two tabs share a name, only the first is used and the name is listed in
 -- `duplicateTabNames`. `windowNumbers` maps keys to window numbers; those differ per
@@ -90,34 +78,24 @@ end
 function ChatSettings.Read(categories)
 	local live = { windows = {}, windowNumbers = {}, duplicateTabNames = {} }
 	local dockOrder = {}
-	local seen = {}
 	local firstCustomWindow = FirstCustomWindow()
 
 	for windowNumber = 1, MAX_WINDOWS do
-		local name, fontSize, r, g, b, a, shown, locked, docked = GetChatWindowInfo(windowNumber)
+		local name, _, _, _, _, _, shown, _, docked = GetChatWindowInfo(windowNumber)
+		local isCustom = windowNumber >= firstCustomWindow
 		local tracked = windowNumber == GENERAL_WINDOW
 			or windowNumber == COMBAT_LOG_WINDOW
-			or (windowNumber >= firstCustomWindow and name and name ~= "")
+			or (isCustom and name and name ~= "")
 
 		-- A window keeps its name after its tab is closed, so check shown or docked. A docked
 		-- tab that isn't the selected one reports shown = false.
 		if tracked and (shown or docked) then
-			local key = windowNumber < firstCustomWindow and ("window:" .. windowNumber) or ("name:" .. name)
-			if seen[key] then
+			local key = isCustom and ("name:" .. name) or ("window:" .. windowNumber)
+			if live.windowNumbers[key] then
 				table.insert(live.duplicateTabNames, name)
 			else
-				seen[key] = true
 				live.windowNumbers[key] = windowNumber
-				local window = { key = key, name = name }
-				if categories.fontAndBackground then
-					window.fontSize, window.r, window.g, window.b, window.a = fontSize, r, g, b, a
-					window.locked = locked and true or false -- the API returns 1 or nil
-				end
-				-- The combat log uses its own filters, not message groups.
-				if categories.messagesAndChannels and windowNumber ~= COMBAT_LOG_WINDOW then
-					window.messageGroups = ReadMessageGroups(windowNumber)
-					window.channels = ReadChannels(windowNumber)
-				end
+				local window = ReadWindow(windowNumber, key, categories)
 				-- `docked` is the position in the dock, or nil. Undocked windows sort last.
 				dockOrder[window] = docked or (MAX_WINDOWS + windowNumber)
 				table.insert(live.windows, window)
@@ -135,6 +113,33 @@ function ChatSettings.Read(categories)
 		live.colors = ReadColors()
 	end
 	return live
+end
+
+local function IsCustomKey(key)
+	return key:sub(1, 5) == "name:"
+end
+
+-- Most chat types have a display name in the global strings, e.g. SAY = "Say".
+local function ChatTypeName(chatType)
+	local name = _G[chatType]
+	return type(name) == "string" and name or chatType
+end
+
+-- Zone channels (General, Trade) have localized names, so match them by ID.
+-- Custom channels have no ID and are matched by name.
+local function ChannelKey(channel)
+	if channel.zoneChannelID > 0 then
+		return channel.zoneChannelID
+	end
+	return channel.name:lower()
+end
+
+-- The profile may come from a client in another language, so ask this one what the zone channel is called.
+local function ClientChannelName(channel)
+	if channel.zoneChannelID > 0 then
+		return C_ChatInfo.GetChannelShortcutForChannelID(channel.zoneChannelID) or channel.name
+	end
+	return channel.name
 end
 
 -- Returns what is in `want` but not `have`, and what is in `have` but not `want`.
@@ -280,8 +285,8 @@ local function DiffColors(liveColors, profileColors, addDifference)
 end
 
 -- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
--- says how the live settings differ from the profile, and `apply` makes it match. The panel shows
--- the text and Apply runs the same entries, so the two can't disagree.
+-- says how the live settings differ from the profile, and `apply` makes them match. The panel
+-- shows the text and Apply runs the same entries, so the two can't disagree.
 function ChatSettings.Diff(live, profile)
 	local categories = profile.categories
 	local differences = {}
@@ -289,7 +294,10 @@ function ChatSettings.Diff(live, profile)
 		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab or false })
 	end
 
-	local wanted = {}
+	local liveByKey, wanted = {}, {}
+	for _, have in ipairs(live.windows) do
+		liveByKey[have.key] = have
+	end
 	for _, want in ipairs(profile.windows) do
 		wanted[want.key] = true
 	end
@@ -304,11 +312,6 @@ function ChatSettings.Diff(live, profile)
 				end, true)
 			end
 		end
-	end
-
-	local liveByKey = {}
-	for _, have in ipairs(live.windows) do
-		liveByKey[have.key] = have
 	end
 
 	for _, want in ipairs(profile.windows) do
@@ -337,9 +340,9 @@ end
 -- functions fail silently. Each change gets its own pcall so one failure doesn't stop the rest.
 function ChatSettings.Apply(profile)
 	local firstError
-	local function Run(tabChanges)
+	local function ApplyDifferences(include)
 		for _, difference in ipairs(ChatSettings.Diff(ChatSettings.Read(profile.categories), profile)) do
-			if difference.opensOrClosesTab == tabChanges then
+			if include(difference) then
 				local ok, err = pcall(difference.apply)
 				if not ok then
 					firstError = firstError or err
@@ -350,7 +353,11 @@ function ChatSettings.Apply(profile)
 
 	-- A tab has to exist before its font or channels can be set, so open and close tabs
 	-- first, then compare again and do the rest.
-	Run(true)
-	Run(false)
+	ApplyDifferences(function(difference)
+		return difference.opensOrClosesTab
+	end)
+	ApplyDifferences(function(difference)
+		return not difference.opensOrClosesTab
+	end)
 	return ChatSettings.Diff(ChatSettings.Read(profile.categories), profile), firstError
 end
