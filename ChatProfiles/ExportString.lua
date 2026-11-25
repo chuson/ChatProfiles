@@ -94,7 +94,7 @@ local function ValidateWindow(window, what)
 	CheckFields(window, WINDOW_FIELDS, what)
 
 	local clean = { name = CleanName(window.name, what .. " name") }
-	if window.key == "id:1" or window.key == "id:2" then
+	if window.key == "window:1" or window.key == "window:2" then
 		clean.key = window.key
 	else
 		Check(type(window.key) == "string" and window.key:sub(1, 5) == "name:", what .. " has an invalid key")

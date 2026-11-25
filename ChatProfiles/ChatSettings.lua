@@ -6,7 +6,7 @@ local _, ns = ...
 local ChatSettings = {}
 ns.ChatSettings = ChatSettings
 
--- General and Combat Log are always windows 1 and 2, so they're keyed by number ("id:1").
+-- General and Combat Log are always windows 1 and 2, so they're keyed by window number ("window:1").
 -- Tabs the player makes land in whatever window is free, so they're keyed by name ("name:Trade").
 local GENERAL_WINDOW = 1
 local COMBAT_LOG_WINDOW = 2
@@ -102,7 +102,7 @@ function ChatSettings.Read(categories)
 		-- A window keeps its name after its tab is closed, so check shown or docked. A docked
 		-- tab that isn't the selected one reports shown = false.
 		if tracked and (shown or docked) then
-			local key = windowNumber < firstCustomWindow and ("id:" .. windowNumber) or ("name:" .. name)
+			local key = windowNumber < firstCustomWindow and ("window:" .. windowNumber) or ("name:" .. name)
 			if seen[key] then
 				table.insert(live.duplicateTabNames, name)
 			else
@@ -280,7 +280,7 @@ local function DiffColors(liveColors, profileColors, addDifference)
 end
 
 -- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
--- says how live chat differs from the profile, and `apply` makes it match. The panel shows
+-- says how the live settings differ from the profile, and `apply` makes it match. The panel shows
 -- the text and Apply runs the same entries, so the two can't disagree.
 function ChatSettings.Diff(live, profile)
 	local categories = profile.categories

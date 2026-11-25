@@ -40,7 +40,7 @@ end
 -- Returns what did not apply, and the first error a change raised, if any.
 local function Apply(profile)
 	local remaining, firstError = ChatSettings.Apply(profile)
-	-- After a clean apply, live chat matches the profile exactly, so saving is safe again.
+	-- After a clean apply, the live settings match the profile exactly, so saving is safe again.
 	lastApplyFailed = #remaining > 0
 	return remaining, firstError
 end
@@ -66,7 +66,7 @@ function Profiles.LastApplyFailed()
 	return lastApplyFailed
 end
 
--- Returns what differs between live chat and the selected profile, and any tab names
+-- Returns what differs between the live settings and the selected profile, and any tab names
 -- that appear twice. Returns nil if this character uses no profile.
 function Profiles.Differences()
 	local _, profile = Profiles.Selected()
@@ -77,11 +77,11 @@ function Profiles.Differences()
 	return ChatSettings.Diff(live, profile), live.duplicateTabNames
 end
 
--- Saves live chat into the selected profile. Runs at logout, on Save Now, and before
+-- Saves the live settings into the selected profile. Runs at logout, on Save now, and before
 -- switching profiles.
 --
--- Saves even when nothing seems to differ: a category that was just switched on has no
--- saved data to compare against yet. Categories that are switched off are dropped.
+-- Saves even when nothing seems to differ: a category that was just turned on has no
+-- saved data to compare against yet. Categories that are turned off are dropped.
 function Profiles.SaveSelected()
 	local _, profile = Profiles.Selected()
 	if not profile or lastApplyFailed then
@@ -105,7 +105,7 @@ function Profiles.Select(name)
 	return Apply(db.profiles[name])
 end
 
--- Makes live chat a new profile and uses it. The previous profile is left as it was.
+-- Makes the live settings a new profile and uses it. The previous profile is left as it was.
 function Profiles.SaveAsNew(name)
 	local newName, reason = CheckNewName(name)
 	if not newName then

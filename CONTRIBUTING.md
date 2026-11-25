@@ -2,7 +2,7 @@
 
 Thanks for helping out. Chat Profiles is small on purpose, so most changes are a few lines in one file. This page covers how to get set up, how the code is organized, and what to check before you send a change.
 
-If you're changing how the addon behaves, read `ChatCopy Design Doc.md` first. It explains what the addon does and why.
+If you're changing how the addon behaves, read `Chat Profiles Design Doc.md` first. It explains what the addon does and why.
 
 ## Getting set up
 
@@ -14,7 +14,6 @@ If you're changing how the addon behaves, read `ChatCopy Design Doc.md` first. I
 
 - `ChatProfiles/` is the addon itself, and the only folder that ships.
 - `tests/` has tests that run outside the game.
-- `tools/` has throwaway diagnostics, such as the login probe.
 - `.github/workflows/` runs luacheck and the tests on every push and pull request.
 
 Each file in `ChatProfiles/` has one job:

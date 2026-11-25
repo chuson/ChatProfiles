@@ -6,9 +6,6 @@ globals = {
 	"ChatProfilesDB",
 	"SLASH_CHATPROFILES1",
 	"SlashCmdList",
-	-- tools/ChatCopyProbe
-	"ChatCopyProbeDB",
-	"SLASH_CHATCOPYPROBE1",
 }
 
 -- Game APIs in use. Check each new one against Blizzard's UI source and in game first
@@ -31,11 +28,9 @@ read_globals = {
 	"GetChatWindowInfo",
 	"GetChatWindowMessages",
 	"GetNormalizedRealmName",
-	"GetTime",
 	"SetChatColorNameByClass",
 	"Settings",
 	"UnitName",
-	"date",
 }
 
 -- The test sets up its own stand-ins for game globals.

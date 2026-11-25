@@ -199,7 +199,7 @@ local function BuildWidgets()
 	widgets.details = Label("", "GameFontDisableSmall", widgets.status, 12, -6)
 	widgets.details:SetWidth(CONTENT_WIDTH - 12)
 
-	widgets.saveNow = Button("Save Now", 100, function()
+	widgets.saveNow = Button("Save now", 100, function()
 		Profiles.SaveSelected()
 		local name = Profiles.Selected()
 		ShowMessage('Saved your chat settings to "' .. name .. '".')

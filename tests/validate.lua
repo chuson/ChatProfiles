@@ -14,7 +14,7 @@ local function GoodProfile()
 		categories = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true },
 		windows = {
 			{
-				key = "id:1",
+				key = "window:1",
 				name = "General",
 				fontSize = 0,
 				r = 0,
@@ -25,7 +25,7 @@ local function GoodProfile()
 				messageGroups = { "SAY", "SYSTEM_NOMENU", "GUILD" },
 				channels = { { name = "Trade", zoneChannelID = 2 }, { name = "MyChannel", zoneChannelID = 0 } },
 			},
-			{ key = "id:2", name = "Combat Log", fontSize = 14 },
+			{ key = "window:2", name = "Combat Log", fontSize = 14 },
 			{ key = "name:trade", name = "trade", messageGroups = {}, channels = {} },
 		},
 		colors = { SAY = { r = 1, g = 1, b = 1 }, GUILD = { r = 0.25, g = 1, b = 0.25, classColoredNames = true } },
@@ -109,7 +109,7 @@ Rejects("an unknown tab field", function(p)
 	p.windows[1].script = "print(1)"
 end)
 Rejects("a bad key", function(p)
-	p.windows[1].key = "id:3"
+	p.windows[1].key = "window:3"
 end)
 Rejects("a name that is only |", function(p)
 	p.windows[3].name = "||"
