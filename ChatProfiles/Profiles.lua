@@ -1,27 +1,27 @@
--- Named chat setups that characters follow. Owns ChatCopyDB, the login apply and the logout save.
+-- Named sets of chat settings that characters use. Owns ChatProfilesDB, the login apply and the logout save.
 
 local addonName, ns = ...
-local Chat = ns.Chat
+local ChatSettings = ns.ChatSettings
 
 local Profiles = {}
 ns.Profiles = Profiles
 
-Profiles.MAX_NAME_LENGTH = 50
-local MAX_NAME_LENGTH = Profiles.MAX_NAME_LENGTH
+Profiles.MAX_PROFILE_NAME_LENGTH = 50
+local MAX_PROFILE_NAME_LENGTH = Profiles.MAX_PROFILE_NAME_LENGTH
 
 local db
 
 -- Set when an apply leaves differences. A half-applied setup must never be saved into
 -- a profile that other characters share, so saves are skipped until an apply succeeds.
-local sessionFailed = false
+local lastApplyFailed = false
 
 local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
 
 -- A new table each call, since profiles edit theirs in place.
-local function DefaultInclude()
-	return { tabs = true, contents = true, look = true, colors = true }
+local function DefaultCategories()
+	return { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
 end
 
 local function CheckNewName(name)
@@ -29,8 +29,8 @@ local function CheckNewName(name)
 	name = (name or ""):gsub("|", ""):match("^%s*(.-)%s*$")
 	if name == "" then
 		return nil, "Type a name in the Name box first."
-	elseif #name > MAX_NAME_LENGTH then
-		return nil, "That name is too long. Names can be up to " .. MAX_NAME_LENGTH .. " characters."
+	elseif #name > MAX_PROFILE_NAME_LENGTH then
+		return nil, "That name is too long. Names can be up to " .. MAX_PROFILE_NAME_LENGTH .. " characters."
 	elseif db.profiles[name] then
 		return nil, 'You already have a profile called "' .. name .. '".'
 	end
@@ -39,9 +39,9 @@ end
 
 -- Returns what did not apply, and the first error a change raised, if any.
 local function Apply(profile)
-	local remaining, firstError = Chat.Apply(profile)
+	local remaining, firstError = ChatSettings.Apply(profile)
 	-- After a clean apply, live chat matches the profile exactly, so saving is safe again.
-	sessionFailed = #remaining > 0
+	lastApplyFailed = #remaining > 0
 	return remaining, firstError
 end
 
@@ -54,27 +54,27 @@ function Profiles.Names()
 	return names
 end
 
--- Returns the name and profile this character follows, or nil.
+-- Returns the name and profile this character uses, or nil.
 function Profiles.Selected()
-	local name = db.characters[CharacterKey()]
+	local name = db.profileByCharacter[CharacterKey()]
 	if name and db.profiles[name] then
 		return name, db.profiles[name]
 	end
 end
 
-function Profiles.HasFailed()
-	return sessionFailed
+function Profiles.LastApplyFailed()
+	return lastApplyFailed
 end
 
 -- Returns what differs between live chat and the selected profile, and any tab names
--- that appear twice. Returns nil if this character follows no profile.
-function Profiles.Status()
+-- that appear twice. Returns nil if this character uses no profile.
+function Profiles.Differences()
 	local _, profile = Profiles.Selected()
 	if not profile then
 		return nil
 	end
-	local live = Chat.Read(profile.include)
-	return Chat.Diff(live, profile), live.duplicates
+	local live = ChatSettings.Read(profile.categories)
+	return ChatSettings.Diff(live, profile), live.duplicateTabNames
 end
 
 -- Saves live chat into the selected profile. Runs at logout, on Save Now, and before
@@ -84,44 +84,44 @@ end
 -- saved data to compare against yet. Categories that are switched off are dropped.
 function Profiles.SaveSelected()
 	local _, profile = Profiles.Selected()
-	if not profile or sessionFailed then
+	if not profile or lastApplyFailed then
 		return false
 	end
-	local live = Chat.Read(profile.include)
+	local live = ChatSettings.Read(profile.categories)
 	profile.windows = live.windows
 	profile.colors = live.colors
 	return true
 end
 
--- Saves into the current profile, then applies the new one. Pass nil to follow no profile.
+-- Saves into the current profile, then applies the new one. Pass nil to use no profile.
 -- Returns what did not apply.
 function Profiles.Select(name)
 	-- Changes since the last save belong to the old profile, so save before switching.
 	Profiles.SaveSelected()
-	db.characters[CharacterKey()] = name
+	db.profileByCharacter[CharacterKey()] = name
 	if not name then
 		return {}
 	end
 	return Apply(db.profiles[name])
 end
 
--- Makes live chat a new profile and follows it. The previous profile is left as it was.
+-- Makes live chat a new profile and uses it. The previous profile is left as it was.
 function Profiles.SaveAsNew(name)
 	local newName, reason = CheckNewName(name)
 	if not newName then
 		return nil, reason
 	end
-	local include = DefaultInclude()
-	local live = Chat.Read(include)
-	db.profiles[newName] = { include = include, windows = live.windows, colors = live.colors }
-	db.characters[CharacterKey()] = newName
+	local categories = DefaultCategories()
+	local live = ChatSettings.Read(categories)
+	db.profiles[newName] = { categories = categories, windows = live.windows, colors = live.colors }
+	db.profileByCharacter[CharacterKey()] = newName
 	-- The new profile is exactly the live setup, so nothing half-applied is left to protect.
-	sessionFailed = false
+	lastApplyFailed = false
 	return newName
 end
 
 -- Adds an imported profile. It is not applied until a character selects it.
-function Profiles.Add(name, profile)
+function Profiles.AddImported(name, profile)
 	local newName, reason = CheckNewName(name)
 	if not newName then
 		return nil, reason
@@ -136,38 +136,38 @@ function Profiles.Rename(oldName, name)
 		return nil, reason
 	end
 	db.profiles[newName], db.profiles[oldName] = db.profiles[oldName], nil
-	for character, followed in pairs(db.characters) do
-		if followed == oldName then
-			db.characters[character] = newName
+	for character, profileName in pairs(db.profileByCharacter) do
+		if profileName == oldName then
+			db.profileByCharacter[character] = newName
 		end
 	end
 	return newName
 end
 
--- Deletes a profile. Characters that followed it keep their chat and follow nothing.
+-- Deletes a profile. Characters that used it keep their chat settings and use no profile.
 function Profiles.Delete(name)
 	db.profiles[name] = nil
-	for character, followed in pairs(db.characters) do
-		if followed == name then
-			db.characters[character] = nil
+	for character, profileName in pairs(db.profileByCharacter) do
+		if profileName == name then
+			db.profileByCharacter[character] = nil
 		end
 	end
 end
 
-function Profiles.SetInclude(category, enabled)
+function Profiles.SetCategoryEnabled(category, enabled)
 	local _, profile = Profiles.Selected()
 	if profile then
-		profile.include[category] = enabled
+		profile.categories[category] = enabled
 	end
 end
 
 local function LoadSavedVariables()
-	-- Assign the global, not just `db`: at logout the client saves whatever ChatCopyDB points to.
-	ChatCopyDB = ChatCopyDB or {}
-	db = ChatCopyDB
+	-- Assign the global, not just `db`: at logout the client saves whatever ChatProfilesDB points to.
+	ChatProfilesDB = ChatProfilesDB or {}
+	db = ChatProfilesDB
 	db.schema = db.schema or 1
 	db.profiles = db.profiles or {}
-	db.characters = db.characters or {}
+	db.profileByCharacter = db.profileByCharacter or {}
 end
 
 local function ApplyAtLogin()
@@ -178,13 +178,13 @@ local function ApplyAtLogin()
 	local remaining, firstError = Apply(profile)
 	if #remaining > 0 then
 		print(
-			'ChatCopy: Some settings from "'
+			'Chat Profiles: Some settings from "'
 				.. name
 				.. "\" couldn't be applied, so changes won't be saved until you reload or log in again."
-				.. " Type /chatcopy for details."
+				.. " Type /chatprofiles for details."
 		)
 		if firstError then
-			print("ChatCopy: The first error was: " .. tostring(firstError))
+			print("Chat Profiles: The first error was: " .. tostring(firstError))
 		end
 	end
 end

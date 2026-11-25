@@ -1,10 +1,10 @@
 ## Interface: 16001
-## Title: ChatCopy
+## Title: Chat Profiles
 ## Notes: Share your chat tabs, channels and colors between characters.
 ## Version: 0.1.0
-## SavedVariables: ChatCopyDB
+## SavedVariables: ChatProfilesDB
 
-Chat.lua
-Codec.lua
+ChatSettings.lua
+ExportString.lua
 Profiles.lua
-UI.lua
+OptionsPanel.lua

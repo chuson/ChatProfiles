@@ -4,35 +4,35 @@
 
 local _, ns = ...
 
-local Codec = {}
-ns.Codec = Codec
+local ExportString = {}
+ns.ExportString = ExportString
 
 -- Exports are CBOR, then Base64 so they paste cleanly. Bump the number if the format changes.
-local PREFIX = "ChatCopy1:"
-local MAX_INPUT_LENGTH = 64 * 1024 -- checked before decoding, so a huge paste can't stall the game
-local MAX_NAME_LENGTH = 50
+local EXPORT_PREFIX = "ChatProfiles1:"
+local MAX_PASTE_LENGTH = 64 * 1024 -- checked before decoding, so a huge paste can't stall the game
+local MAX_TEXT_LENGTH = 50
 local MAX_LIST_LENGTH = 100 -- message groups or channels in one tab
 local MAX_COLORS = 200
 local MIN_FONT_SIZE, MAX_FONT_SIZE = 6, 40
 
-local PROFILE_FIELDS = { include = true, windows = true, colors = true }
-local CATEGORIES = { tabs = true, contents = true, look = true, colors = true }
+local PROFILE_FIELDS = { categories = true, windows = true, colors = true }
+local CATEGORIES = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
 local WINDOW_FIELDS = {
 	key = true,
 	name = true,
-	size = true,
+	fontSize = true,
 	r = true,
 	g = true,
 	b = true,
 	a = true,
 	locked = true,
-	groups = true,
+	messageGroups = true,
 	channels = true,
 }
-local CHANNEL_FIELDS = { name = true, zoneID = true }
-local COLOR_FIELDS = { r = true, g = true, b = true, classColor = true }
+local CHANNEL_FIELDS = { name = true, zoneChannelID = true }
+local COLOR_FIELDS = { r = true, g = true, b = true, classColoredNames = true }
 
--- Validation stops at the first problem by raising an error, which Codec.Validate catches.
+-- Validation stops at the first problem by raising an error, which ExportString.Validate catches.
 -- Level 0 leaves the file and line number off the message.
 local function Check(ok, reason)
 	if not ok then
@@ -41,13 +41,13 @@ local function Check(ok, reason)
 end
 
 -- For putting untrusted values into an error message that the panel shows.
-local function Quote(value)
+local function SafeText(value)
 	return (tostring(value):gsub("|", ""):sub(1, 30))
 end
 
 local function CheckFields(t, allowed, what)
 	for field in pairs(t) do
-		Check(allowed[field], "unknown field " .. Quote(field) .. " in " .. what)
+		Check(allowed[field], "unknown field " .. SafeText(field) .. " in " .. what)
 	end
 end
 
@@ -64,8 +64,17 @@ local function CheckList(t, maxLength, what)
 	end
 end
 
-local function CheckUnit(value, what)
-	Check(type(value) == "number" and value >= 0 and value <= 1, what .. " must be between 0 and 1")
+local function IsBetweenZeroAndOne(value)
+	return type(value) == "number" and value >= 0 and value <= 1
+end
+
+local function CheckColor(t, what)
+	local valid = IsBetweenZeroAndOne(t.r) and IsBetweenZeroAndOne(t.g) and IsBetweenZeroAndOne(t.b)
+	Check(valid, what .. " needs red, green and blue values between 0 and 1")
+end
+
+local function CheckOpacity(value, what)
+	Check(IsBetweenZeroAndOne(value), what .. " must be between 0 and 1")
 end
 
 local function CheckBoolean(value, what)
@@ -76,7 +85,7 @@ end
 local function CleanName(value, what)
 	Check(type(value) == "string", what .. " is not text")
 	local name = value:gsub("|", "")
-	Check(name ~= "" and #name <= MAX_NAME_LENGTH, what .. " is empty or too long")
+	Check(name ~= "" and #name <= MAX_TEXT_LENGTH, what .. " is empty or too long")
 	return name
 end
 
@@ -92,37 +101,35 @@ local function ValidateWindow(window, what)
 		clean.key = "name:" .. clean.name
 	end
 
-	local size = window.size
-	if size ~= nil then
-		local valid = type(size) == "number"
-			and size % 1 == 0
-			and (size == 0 or (size >= MIN_FONT_SIZE and size <= MAX_FONT_SIZE))
+	local fontSize = window.fontSize
+	if fontSize ~= nil then
+		local valid = type(fontSize) == "number"
+			and fontSize % 1 == 0
+			and (fontSize == 0 or (fontSize >= MIN_FONT_SIZE and fontSize <= MAX_FONT_SIZE))
 		Check(valid, what .. " has an invalid font size")
-		clean.size = size
+		clean.fontSize = fontSize
 	end
 
 	if window.r ~= nil or window.g ~= nil or window.b ~= nil then
-		CheckUnit(window.r, what .. " red")
-		CheckUnit(window.g, what .. " green")
-		CheckUnit(window.b, what .. " blue")
+		CheckColor(window, what .. " background color")
 		clean.r, clean.g, clean.b = window.r, window.g, window.b
 	end
 	if window.a ~= nil then
-		CheckUnit(window.a, what .. " opacity")
+		CheckOpacity(window.a, what .. " opacity")
 		clean.a = window.a
 	end
 
 	CheckBoolean(window.locked, what .. " lock")
 	clean.locked = window.locked
 
-	if window.groups ~= nil then
-		CheckList(window.groups, MAX_LIST_LENGTH, what .. " message groups")
-		clean.groups = {}
-		for i = 1, #window.groups do
-			local group = window.groups[i]
-			local valid = type(group) == "string" and #group <= MAX_NAME_LENGTH and group:match("^[%u%d_]+$")
+	if window.messageGroups ~= nil then
+		CheckList(window.messageGroups, MAX_LIST_LENGTH, what .. " message groups")
+		clean.messageGroups = {}
+		for i = 1, #window.messageGroups do
+			local group = window.messageGroups[i]
+			local valid = type(group) == "string" and #group <= MAX_TEXT_LENGTH and group:match("^[%u%d_]+$")
 			Check(valid, what .. " has an invalid message group")
-			clean.groups[i] = group
+			clean.messageGroups[i] = group
 		end
 	end
 
@@ -133,9 +140,9 @@ local function ValidateWindow(window, what)
 			local channel = window.channels[i]
 			Check(type(channel) == "table", what .. " has an invalid channel")
 			CheckFields(channel, CHANNEL_FIELDS, what .. " channel")
-			local zoneID = channel.zoneID
-			Check(type(zoneID) == "number" and zoneID >= 0 and zoneID % 1 == 0, what .. " has an invalid channel ID")
-			clean.channels[i] = { name = CleanName(channel.name, what .. " channel name"), zoneID = zoneID }
+			local id = channel.zoneChannelID
+			Check(type(id) == "number" and id >= 0 and id % 1 == 0, what .. " has an invalid channel ID")
+			clean.channels[i] = { name = CleanName(channel.name, what .. " channel name"), zoneChannelID = id }
 		end
 	end
 
@@ -148,28 +155,26 @@ local function ValidateColors(colors)
 	for chatType, color in pairs(colors) do
 		count = count + 1
 		Check(count <= MAX_COLORS, "too many chat colors")
-		Check(type(chatType) == "string" and ChatTypeInfo[chatType] ~= nil, "unknown chat type " .. Quote(chatType))
+		Check(type(chatType) == "string" and ChatTypeInfo[chatType] ~= nil, "unknown chat type " .. SafeText(chatType))
 		Check(type(color) == "table", chatType .. " color is not a table")
 		CheckFields(color, COLOR_FIELDS, chatType .. " color")
-		CheckUnit(color.r, chatType .. " red")
-		CheckUnit(color.g, chatType .. " green")
-		CheckUnit(color.b, chatType .. " blue")
-		CheckBoolean(color.classColor, chatType .. " class-colored names")
-		clean[chatType] = { r = color.r, g = color.g, b = color.b, classColor = color.classColor }
+		CheckColor(color, chatType .. " color")
+		CheckBoolean(color.classColoredNames, chatType .. " class-colored names")
+		clean[chatType] = { r = color.r, g = color.g, b = color.b, classColoredNames = color.classColoredNames }
 	end
 	return clean
 end
 
-local function BuildProfile(data)
+local function CleanProfile(data)
 	Check(type(data) == "table", "not a profile")
 	CheckFields(data, PROFILE_FIELDS, "profile")
 
-	Check(type(data.include) == "table", "the profile has no categories")
-	CheckFields(data.include, CATEGORIES, "categories")
-	local include = {}
+	Check(type(data.categories) == "table", "the profile has no categories")
+	CheckFields(data.categories, CATEGORIES, "categories")
+	local categories = {}
 	for category in pairs(CATEGORIES) do
-		CheckBoolean(data.include[category], category)
-		include[category] = data.include[category] == true
+		CheckBoolean(data.categories[category], category)
+		categories[category] = data.categories[category] == true
 	end
 
 	CheckList(data.windows, Constants.ChatFrameConstants.MaxChatWindows, "tabs")
@@ -181,7 +186,7 @@ local function BuildProfile(data)
 		windows[i] = window
 	end
 
-	local profile = { include = include, windows = windows }
+	local profile = { categories = categories, windows = windows }
 	if data.colors ~= nil then
 		profile.colors = ValidateColors(data.colors)
 	end
@@ -189,37 +194,37 @@ local function BuildProfile(data)
 end
 
 -- Returns a clean copy of `data`, or nil and the reason it was rejected.
-function Codec.Validate(data)
-	local ok, result = pcall(BuildProfile, data)
+function ExportString.Validate(data)
+	local ok, result = pcall(CleanProfile, data)
 	if ok then
 		return result
 	end
 	return nil, result
 end
 
-function Codec.Export(profile)
-	local data = { include = profile.include, windows = profile.windows, colors = profile.colors }
-	return PREFIX .. C_EncodingUtil.EncodeBase64(C_EncodingUtil.SerializeCBOR(data))
+function ExportString.Export(profile)
+	local data = { categories = profile.categories, windows = profile.windows, colors = profile.colors }
+	return EXPORT_PREFIX .. C_EncodingUtil.EncodeBase64(C_EncodingUtil.SerializeCBOR(data))
 end
 
 -- Returns a profile, or nil and a reason to show the user.
-function Codec.Import(text)
-	if #text > MAX_INPUT_LENGTH then
-		return nil, "the text is too long to be a ChatCopy profile"
+function ExportString.Import(text)
+	if #text > MAX_PASTE_LENGTH then
+		return nil, "the text is too long to be a Chat Profiles export"
 	end
 	text = text:match("^%s*(.-)%s*$")
 	if text == "" then
 		return nil, "the box is empty"
-	elseif text:sub(1, #PREFIX) ~= PREFIX then
-		return nil, "that isn't a ChatCopy profile"
+	elseif text:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then
+		return nil, "that isn't a Chat Profiles export"
 	end
 
 	-- Both decoders raise errors on bad input instead of returning nil.
 	local ok, data = pcall(function()
-		return C_EncodingUtil.DeserializeCBOR(C_EncodingUtil.DecodeBase64(text:sub(#PREFIX + 1)))
+		return C_EncodingUtil.DeserializeCBOR(C_EncodingUtil.DecodeBase64(text:sub(#EXPORT_PREFIX + 1)))
 	end)
 	if not ok then
 		return nil, "part of the text is missing or damaged. Try copying it again"
 	end
-	return Codec.Validate(data)
+	return ExportString.Validate(data)
 end

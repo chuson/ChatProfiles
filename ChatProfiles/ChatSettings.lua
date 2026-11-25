@@ -1,24 +1,24 @@
--- Reads the live chat setup, compares it with a profile, and applies a profile.
+-- Reads the live chat settings, compares them with a profile, and applies a profile.
 -- Nothing here prints or touches saved data: callers decide what to do with the results.
 
 local _, ns = ...
 
-local Chat = {}
-ns.Chat = Chat
+local ChatSettings = {}
+ns.ChatSettings = ChatSettings
 
 -- General and Combat Log are always windows 1 and 2, so they're keyed by number ("id:1").
 -- Tabs the player makes land in whatever window is free, so they're keyed by name ("name:Trade").
-local GENERAL = 1
-local COMBAT_LOG = 2
+local GENERAL_WINDOW = 1
+local COMBAT_LOG_WINDOW = 2
 local MAX_WINDOWS = Constants.ChatFrameConstants.MaxChatWindows
 
 -- The client stores colors as 0-255, so values read back are rounded.
-local function Near(x, y)
+local function NearlyEqual(x, y)
 	return math.abs(x - y) < 0.01
 end
 
 local function SameColor(have, want)
-	return Near(have.r, want.r) and Near(have.g, want.g) and Near(have.b, want.b)
+	return NearlyEqual(have.r, want.r) and NearlyEqual(have.g, want.g) and NearlyEqual(have.b, want.b)
 end
 
 -- The client reserves the first few windows (3 is voice transcription). We only touch 1 and 2.
@@ -39,27 +39,27 @@ end
 -- Zone channels (General, Trade) have localized names, so match them by ID.
 -- Custom channels have no ID and are matched by name.
 local function ChannelKey(channel)
-	if channel.zoneID > 0 then
-		return channel.zoneID
+	if channel.zoneChannelID > 0 then
+		return channel.zoneChannelID
 	end
 	return channel.name:lower()
 end
 
 -- The profile may come from a client in another language, so ask this one what the zone channel is called.
-local function ChannelName(channel)
-	if channel.zoneID > 0 then
-		return C_ChatInfo.GetChannelShortcutForChannelID(channel.zoneID) or channel.name
+local function ClientChannelName(channel)
+	if channel.zoneChannelID > 0 then
+		return C_ChatInfo.GetChannelShortcutForChannelID(channel.zoneChannelID) or channel.name
 	end
 	return channel.name
 end
 
--- Channels and groups are sorted so an unchanged setup saves and exports the same way every time.
-local function ReadChannels(id)
+-- Channels and message groups are sorted so an unchanged setup saves and exports the same way every time.
+local function ReadChannels(windowNumber)
 	local channels = {}
 	-- Returns name1, id1, name2, id2, ...
-	local values = { GetChatWindowChannels(id) }
+	local values = { GetChatWindowChannels(windowNumber) }
 	for i = 1, #values, 2 do
-		table.insert(channels, { name = values[i], zoneID = values[i + 1] or 0 })
+		table.insert(channels, { name = values[i], zoneChannelID = values[i + 1] or 0 })
 	end
 	table.sort(channels, function(a, b)
 		return a.name < b.name
@@ -67,72 +67,74 @@ local function ReadChannels(id)
 	return channels
 end
 
-local function ReadGroups(id)
-	local groups = { GetChatWindowMessages(id) }
-	table.sort(groups)
-	return groups
+local function ReadMessageGroups(windowNumber)
+	local messageGroups = { GetChatWindowMessages(windowNumber) }
+	table.sort(messageGroups)
+	return messageGroups
 end
 
 local function ReadColors()
 	local colors = {}
 	for chatType, info in pairs(ChatTypeInfo) do
 		if info.r then
-			colors[chatType] = { r = info.r, g = info.g, b = info.b, classColor = info.colorNameByClass }
+			colors[chatType] = { r = info.r, g = info.g, b = info.b, classColoredNames = info.colorNameByClass }
 		end
 	end
 	return colors
 end
 
--- Returns the live setup in the same shape as a profile, leaving out categories that
--- `include` turns off. If two tabs share a name, only the first is used and the name is
--- listed in `duplicates`. `ids` maps keys to window numbers; those differ per character,
--- so they stay out of `windows`, which gets saved.
-function Chat.Read(include)
-	local setup = { windows = {}, ids = {}, duplicates = {} }
+-- Returns the live settings in the same shape as a profile, leaving out categories that are
+-- turned off. If two tabs share a name, only the first is used and the name is listed in
+-- `duplicateTabNames`. `windowNumbers` maps keys to window numbers; those differ per
+-- character, so they stay out of `windows`, which gets saved.
+function ChatSettings.Read(categories)
+	local live = { windows = {}, windowNumbers = {}, duplicateTabNames = {} }
 	local dockOrder = {}
 	local seen = {}
-	local firstCustom = FirstCustomWindow()
+	local firstCustomWindow = FirstCustomWindow()
 
-	for id = 1, MAX_WINDOWS do
-		local name, size, r, g, b, a, shown, locked, docked = GetChatWindowInfo(id)
-		local tracked = id == GENERAL or id == COMBAT_LOG or (id >= firstCustom and name and name ~= "")
+	for windowNumber = 1, MAX_WINDOWS do
+		local name, fontSize, r, g, b, a, shown, locked, docked = GetChatWindowInfo(windowNumber)
+		local tracked = windowNumber == GENERAL_WINDOW
+			or windowNumber == COMBAT_LOG_WINDOW
+			or (windowNumber >= firstCustomWindow and name and name ~= "")
 
 		-- A window keeps its name after its tab is closed, so check shown or docked. A docked
 		-- tab that isn't the selected one reports shown = false.
 		if tracked and (shown or docked) then
-			local key = id < firstCustom and ("id:" .. id) or ("name:" .. name)
+			local key = windowNumber < firstCustomWindow and ("id:" .. windowNumber) or ("name:" .. name)
 			if seen[key] then
-				table.insert(setup.duplicates, name)
+				table.insert(live.duplicateTabNames, name)
 			else
 				seen[key] = true
-				setup.ids[key] = id
+				live.windowNumbers[key] = windowNumber
 				local window = { key = key, name = name }
-				if include.look then
-					window.size, window.r, window.g, window.b, window.a = size, r, g, b, a
+				if categories.fontAndBackground then
+					window.fontSize, window.r, window.g, window.b, window.a = fontSize, r, g, b, a
 					window.locked = locked and true or false -- the API returns 1 or nil
 				end
 				-- The combat log uses its own filters, not message groups.
-				if include.contents and id ~= COMBAT_LOG then
-					window.groups = ReadGroups(id)
-					window.channels = ReadChannels(id)
+				if categories.messagesAndChannels and windowNumber ~= COMBAT_LOG_WINDOW then
+					window.messageGroups = ReadMessageGroups(windowNumber)
+					window.channels = ReadChannels(windowNumber)
 				end
 				-- `docked` is the position in the dock, or nil. Undocked windows sort last.
-				dockOrder[window] = docked or (MAX_WINDOWS + id)
-				table.insert(setup.windows, window)
+				dockOrder[window] = docked or (MAX_WINDOWS + windowNumber)
+				table.insert(live.windows, window)
 			end
 		end
 	end
 
 	-- New tabs are added to the end of the dock, so creating them in dock order reproduces
 	-- the layout. Tabs that already exist can't be moved.
-	table.sort(setup.windows, function(x, y)
+	table.sort(live.windows, function(x, y)
 		return dockOrder[x] < dockOrder[y]
 	end)
 
-	if include.colors then
-		setup.colors = ReadColors()
+	if categories.colors then
+		live.colors = ReadColors()
 	end
-	return setup
+	return live
 end
 
 -- Returns what is in `want` but not `have`, and what is in `have` but not `want`.
@@ -161,15 +163,15 @@ end
 
 -- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means the
 -- character never picked one.
-local LOOK = {
+local FONT_AND_BACKGROUND = {
 	{
 		label = "different font size",
 		differs = function(have, want)
-			return want.size ~= nil and want.size > 0 and have.size ~= want.size
+			return want.fontSize ~= nil and want.fontSize > 0 and have.fontSize ~= want.fontSize
 		end,
 		apply = function(frame, want)
-			-- The first argument is Blizzard's menu button; it's only read when size is nil.
-			FCF_SetChatWindowFontSize(nil, frame, want.size)
+			-- The first argument is Blizzard's menu button; it's only read when the size is nil.
+			FCF_SetChatWindowFontSize(nil, frame, want.fontSize)
 		end,
 	},
 	{
@@ -184,7 +186,7 @@ local LOOK = {
 	{
 		label = "different background opacity",
 		differs = function(have, want)
-			return want.a ~= nil and not Near(have.a, want.a)
+			return want.a ~= nil and not NearlyEqual(have.a, want.a)
 		end,
 		apply = function(frame, want)
 			FCF_SetWindowAlpha(frame, want.a)
@@ -201,34 +203,34 @@ local LOOK = {
 	},
 }
 
-local function DiffWindow(frame, have, want, include, add)
-	if include.look then
-		for _, setting in ipairs(LOOK) do
+local function DiffWindow(frame, have, want, categories, addDifference)
+	if categories.fontAndBackground then
+		for _, setting in ipairs(FONT_AND_BACKGROUND) do
 			if setting.differs(have, want) then
-				add(have.name .. ": " .. setting.label, function()
+				addDifference(have.name .. ": " .. setting.label, function()
 					setting.apply(frame, want)
 				end)
 			end
 		end
 	end
 
-	if not include.contents then
+	if not categories.messagesAndChannels then
 		return
 	end
 
-	-- Either side may have no groups or channels: the combat log never does, and neither does
-	-- a profile saved while this category was off.
-	if want.groups and have.groups then
-		local missing, extra = SetDifference(have.groups, want.groups, function(group)
+	-- Either side may have no message groups or channels: the combat log never does, and
+	-- neither does a profile saved while this category was off.
+	if want.messageGroups and have.messageGroups then
+		local missing, extra = SetDifference(have.messageGroups, want.messageGroups, function(group)
 			return group
 		end)
 		for _, group in ipairs(missing) do
-			add(have.name .. ": no " .. ChatTypeName(group) .. " messages", function()
+			addDifference(have.name .. ": no " .. ChatTypeName(group) .. " messages", function()
 				frame:AddMessageGroup(group)
 			end)
 		end
 		for _, group in ipairs(extra) do
-			add(have.name .. ": extra " .. ChatTypeName(group) .. " messages", function()
+			addDifference(have.name .. ": extra " .. ChatTypeName(group) .. " messages", function()
 				frame:RemoveMessageGroup(group)
 			end)
 		end
@@ -237,53 +239,54 @@ local function DiffWindow(frame, have, want, include, add)
 	if want.channels and have.channels then
 		local missing, extra = SetDifference(have.channels, want.channels, ChannelKey)
 		for _, channel in ipairs(missing) do
-			local name = ChannelName(channel)
-			add(have.name .. ": no " .. name .. " channel", function()
+			local name = ClientChannelName(channel)
+			addDifference(have.name .. ": no " .. name .. " channel", function()
 				frame:AddChannel(name)
 			end)
 		end
 		-- The live name is already in this client's language.
 		for _, channel in ipairs(extra) do
-			add(have.name .. ": extra " .. channel.name .. " channel", function()
+			addDifference(have.name .. ": extra " .. channel.name .. " channel", function()
 				frame:RemoveChannel(channel.name)
 			end)
 		end
 	end
 end
 
-local function DiffColors(have, want, add)
+local function DiffColors(liveColors, profileColors, addDifference)
 	local chatTypes = {}
-	for chatType in pairs(want) do
+	for chatType in pairs(profileColors) do
 		table.insert(chatTypes, chatType)
 	end
 	table.sort(chatTypes)
 
 	for _, chatType in ipairs(chatTypes) do
-		local current, wanted = have[chatType], want[chatType]
-		if current then
-			if not SameColor(current, wanted) then
-				add("Different color for " .. ChatTypeName(chatType), function()
-					ChangeChatColor(chatType, wanted.r, wanted.g, wanted.b)
+		local have, want = liveColors[chatType], profileColors[chatType]
+		if have then
+			if not SameColor(have, want) then
+				addDifference("Different color for " .. ChatTypeName(chatType), function()
+					ChangeChatColor(chatType, want.r, want.g, want.b)
 				end)
 			end
 			-- Only chat types that support class-colored names report the flag.
-			if current.classColor ~= nil and wanted.classColor ~= nil and current.classColor ~= wanted.classColor then
-				add("Different name coloring for " .. ChatTypeName(chatType), function()
-					SetChatColorNameByClass(chatType, wanted.classColor)
+			local bothKnown = have.classColoredNames ~= nil and want.classColoredNames ~= nil
+			if bothKnown and have.classColoredNames ~= want.classColoredNames then
+				addDifference("Different name coloring for " .. ChatTypeName(chatType), function()
+					SetChatColorNameByClass(chatType, want.classColoredNames)
 				end)
 			end
 		end
 	end
 end
 
--- Returns a list of { text, run, changesTabs }, one per setting that differs. `text` says
--- how live chat differs from the profile, and `run` makes it match. The panel shows the text
--- and Apply runs the same entries, so the two can't disagree.
-function Chat.Diff(live, profile)
-	local include = profile.include
-	local changes = {}
-	local function Add(text, run, changesTabs)
-		table.insert(changes, { text = text, run = run, changesTabs = changesTabs or false })
+-- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
+-- says how live chat differs from the profile, and `apply` makes it match. The panel shows
+-- the text and Apply runs the same entries, so the two can't disagree.
+function ChatSettings.Diff(live, profile)
+	local categories = profile.categories
+	local differences = {}
+	local function AddDifference(text, apply, opensOrClosesTab)
+		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab or false })
 	end
 
 	local wanted = {}
@@ -292,11 +295,11 @@ function Chat.Diff(live, profile)
 	end
 
 	-- Closes go first: if every window is in use, a new tab can't open until one closes.
-	if include.tabs then
+	if categories.tabs then
 		for _, have in ipairs(live.windows) do
 			if IsCustomKey(have.key) and not wanted[have.key] then
-				local frame = _G["ChatFrame" .. live.ids[have.key]]
-				Add('Extra tab "' .. have.name .. '"', function()
+				local frame = _G["ChatFrame" .. live.windowNumbers[have.key]]
+				AddDifference('Extra tab "' .. have.name .. '"', function()
 					FCF_Close(frame)
 				end, true)
 			end
@@ -311,20 +314,20 @@ function Chat.Diff(live, profile)
 	for _, want in ipairs(profile.windows) do
 		local have = liveByKey[want.key]
 		if have then
-			DiffWindow(_G["ChatFrame" .. live.ids[want.key]], have, want, include, Add)
-		elseif include.tabs and IsCustomKey(want.key) then
-			Add('Missing tab "' .. want.name .. '"', function()
+			DiffWindow(_G["ChatFrame" .. live.windowNumbers[want.key]], have, want, categories, AddDifference)
+		elseif categories.tabs and IsCustomKey(want.key) then
+			AddDifference('Missing tab "' .. want.name .. '"', function()
 				-- true = no default channels; Apply's second pass adds the profile's own.
 				FCF_OpenNewWindow(want.name, true)
 			end, true)
 		end
 	end
 
-	if include.colors and profile.colors and live.colors then
-		DiffColors(live.colors, profile.colors, Add)
+	if categories.colors and profile.colors and live.colors then
+		DiffColors(live.colors, profile.colors, AddDifference)
 	end
 
-	return changes
+	return differences
 end
 
 -- Applies a profile and returns what still differs afterward (empty means success), plus
@@ -332,12 +335,12 @@ end
 --
 -- Success means "nothing differs afterward", not "nothing raised an error", because some game
 -- functions fail silently. Each change gets its own pcall so one failure doesn't stop the rest.
-function Chat.Apply(profile)
+function ChatSettings.Apply(profile)
 	local firstError
-	local function Run(runTabChanges)
-		for _, change in ipairs(Chat.Diff(Chat.Read(profile.include), profile)) do
-			if change.changesTabs == runTabChanges then
-				local ok, err = pcall(change.run)
+	local function Run(tabChanges)
+		for _, difference in ipairs(ChatSettings.Diff(ChatSettings.Read(profile.categories), profile)) do
+			if difference.opensOrClosesTab == tabChanges then
+				local ok, err = pcall(difference.apply)
 				if not ok then
 					firstError = firstError or err
 				end
@@ -349,5 +352,5 @@ function Chat.Apply(profile)
 	-- first, then compare again and do the rest.
 	Run(true)
 	Run(false)
-	return Chat.Diff(Chat.Read(profile.include), profile), firstError
+	return ChatSettings.Diff(ChatSettings.Read(profile.categories), profile), firstError
 end

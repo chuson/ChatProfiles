@@ -3,8 +3,8 @@ max_line_length = 120
 
 -- Globals the addon creates.
 globals = {
-	"ChatCopyDB",
-	"SLASH_CHATCOPY1",
+	"ChatProfilesDB",
+	"SLASH_CHATPROFILES1",
 	"SlashCmdList",
 	-- tools/ChatCopyProbe
 	"ChatCopyProbeDB",

@@ -6,29 +6,29 @@ Constants = { ChatFrameConstants = { MaxChatWindows = 10 } }
 ChatTypeInfo = { SAY = {}, GUILD = {}, CHANNEL1 = {} }
 
 local ns = {}
-assert(loadfile("ChatCopy/Codec.lua"))("ChatCopy", ns)
-local Validate = ns.Codec.Validate
+assert(loadfile("ChatProfiles/ExportString.lua"))("ChatProfiles", ns)
+local Validate = ns.ExportString.Validate
 
 local function GoodProfile()
 	return {
-		include = { tabs = true, contents = true, look = true, colors = true },
+		categories = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true },
 		windows = {
 			{
 				key = "id:1",
 				name = "General",
-				size = 0,
+				fontSize = 0,
 				r = 0,
 				g = 0,
 				b = 0,
 				a = 0.25,
 				locked = true,
-				groups = { "SAY", "SYSTEM_NOMENU", "GUILD" },
-				channels = { { name = "Trade", zoneID = 2 }, { name = "MyChannel", zoneID = 0 } },
+				messageGroups = { "SAY", "SYSTEM_NOMENU", "GUILD" },
+				channels = { { name = "Trade", zoneChannelID = 2 }, { name = "MyChannel", zoneChannelID = 0 } },
 			},
-			{ key = "id:2", name = "Combat Log", size = 14 },
-			{ key = "name:trade", name = "trade", groups = {}, channels = {} },
+			{ key = "id:2", name = "Combat Log", fontSize = 14 },
+			{ key = "name:trade", name = "trade", messageGroups = {}, channels = {} },
 		},
-		colors = { SAY = { r = 1, g = 1, b = 1 }, GUILD = { r = 0.25, g = 1, b = 0.25, classColor = true } },
+		colors = { SAY = { r = 1, g = 1, b = 1 }, GUILD = { r = 0.25, g = 1, b = 0.25, classColoredNames = true } },
 	}
 end
 
@@ -74,19 +74,19 @@ end
 
 -- Rejected
 Rejects("not a table", function()
-	return "ChatCopy"
+	return "ChatProfiles"
 end)
 Rejects("an unknown top-level field", function(p)
 	p.extra = true
 end)
 Rejects("missing categories", function(p)
-	p.include = nil
+	p.categories = nil
 end)
 Rejects("an unknown category", function(p)
-	p.include.bogus = true
+	p.categories.bogus = true
 end)
 Rejects("a category that is not a boolean", function(p)
-	p.include.tabs = 1
+	p.categories.tabs = 1
 end)
 Rejects("missing tabs", function(p)
 	p.windows = nil
@@ -118,10 +118,10 @@ Rejects("a name that is too long", function(p)
 	p.windows[3].name = string.rep("a", 51)
 end)
 Rejects("a fractional font size", function(p)
-	p.windows[1].size = 12.5
+	p.windows[1].fontSize = 12.5
 end)
 Rejects("a huge font size", function(p)
-	p.windows[1].size = 400
+	p.windows[1].fontSize = 400
 end)
 Rejects("a color above 1", function(p)
 	p.windows[1].r = 1.5
@@ -139,27 +139,27 @@ Rejects("a lock that is not a boolean", function(p)
 	p.windows[1].locked = 1
 end)
 Rejects("a lowercase message group", function(p)
-	p.windows[1].groups[1] = "say"
+	p.windows[1].messageGroups[1] = "say"
 end)
 Rejects("a message group that is a number", function(p)
-	p.windows[1].groups[1] = 5
+	p.windows[1].messageGroups[1] = 5
 end)
 Rejects("a gap in the message groups", function(p)
-	p.windows[1].groups = { [1] = "SAY", [3] = "GUILD", [4] = "PARTY" }
+	p.windows[1].messageGroups = { [1] = "SAY", [3] = "GUILD", [4] = "PARTY" }
 end)
 Rejects("message groups with a text key", function(p)
-	p.windows[1].groups.extra = "SAY"
+	p.windows[1].messageGroups.extra = "SAY"
 end)
 Rejects("too many message groups", function(p)
 	for i = 1, 101 do
-		p.windows[1].groups[i] = "SAY"
+		p.windows[1].messageGroups[i] = "SAY"
 	end
 end)
 Rejects("a channel without an ID", function(p)
-	p.windows[1].channels[1].zoneID = nil
+	p.windows[1].channels[1].zoneChannelID = nil
 end)
 Rejects("a negative channel ID", function(p)
-	p.windows[1].channels[1].zoneID = -1
+	p.windows[1].channels[1].zoneChannelID = -1
 end)
 Rejects("an unknown channel field", function(p)
 	p.windows[1].channels[1].password = "x"
@@ -171,7 +171,7 @@ Rejects("a chat color missing blue", function(p)
 	p.colors.SAY.b = nil
 end)
 Rejects("class-colored names that are not a boolean", function(p)
-	p.colors.GUILD.classColor = "yes"
+	p.colors.GUILD.classColoredNames = "yes"
 end)
 
 if failures == 0 then
