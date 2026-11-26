@@ -111,7 +111,7 @@ end
 
 -- Zone channels (General, Trade) have localized names, so they're matched by ID. Custom
 -- channels are matched by name, case-insensitively: the game treats "cpTEST" and "Cptest" as
--- one channel and reports the case each character joined with. Saved names keep their case.
+-- one channel and reports it in the case it was joined with. Saved names keep their case.
 local function ChannelKey(channel)
 	if channel.zoneChannelID > 0 then
 		return channel.zoneChannelID
@@ -160,8 +160,8 @@ local function SameColor(have, want)
 	return NearlyEqual(have.r, want.r) and NearlyEqual(have.g, want.g) and NearlyEqual(have.b, want.b)
 end
 
--- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means the
--- character never picked one.
+-- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means it
+-- was never set.
 local function DiffWindow(frame, have, want, categories, addDifference)
 	local function Add(text, apply)
 		addDifference(have.name .. ": " .. text, apply)

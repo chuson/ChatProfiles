@@ -147,7 +147,7 @@ function Profiles.SaveAsNew(name)
 	return newName
 end
 
--- Adds an imported profile. It is not applied until a character selects it.
+-- Adds an imported profile. It isn't applied until the player selects it on a character.
 function Profiles.AddImported(name, profile)
 	local newName, reason = CheckNewName(name)
 	if not newName then
