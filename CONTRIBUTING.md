@@ -21,7 +21,7 @@ Each file in `ChatProfiles/` has one job:
 | File | Does | Never |
 | --- | --- | --- |
 | `ChatSettings.lua` | Reads the live chat settings, compares them with a profile, applies a profile. | Prints, or touches saved data. |
-| `ExportString.lua` | Builds export strings and checks imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the test can stand in for them outside the game. |
+| `ExportString.lua` | Builds export strings and checks imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the tests can stand in for them outside the game. |
 | `Profiles.lua` | Owns the saved data (`ChatProfilesDB`), the login apply and the logout save. | Builds UI. |
 | `OptionsPanel.lua` | The options panel and `/chatprofiles`. | Changes chat settings or saved data itself; it goes through `Profiles`. |
 
@@ -57,8 +57,14 @@ Use frame methods (`frame:AddMessageGroup`) rather than the old `ChatFrame_*` gl
 
 ## Testing
 
-- Run `lua tests/validate.lua` from the repository root. It checks the import validator against good and malformed profiles.
-- Everything else needs the game. Section 11 of the design doc has the steps.
+Run `lua tests/run.lua` from the repository root. There's one test file per module, using the helpers in `tests/helpers.lua`:
+
+- `tests/ExportString.lua` checks reading pasted text, exporting, and the import validator against good and malformed profiles.
+- `tests/ChatSettings.lua` checks `ChatSettings.Diff`: which differences it reports, in what order, and which game calls each one makes when applied.
+
+A test that expects a rejection also checks the reason, so it can't pass because a different check caught the profile. When you add a limit, test both sides of it.
+
+Reading live settings, applying a profile, profile management and the panel need the game. Section 11 of the design doc has the steps.
 
 ## Reviewing a change
 
@@ -76,7 +82,7 @@ Review one area at a time. A pass that looks at everything at once tends to stay
 
 Before you open a pull request:
 
-- Format with StyLua, and run the validator test if you have Lua. GitHub runs it and luacheck on your pull request too.
+- Format with StyLua, and run the tests if you have Lua. GitHub runs them and luacheck on your pull request too.
 - Try the change in game, including a `/reload` and a full logout, since saving happens at logout.
 - If the change affects behavior, update the design doc to match.
 - Keep each pull request to one change, and say in the description what you tested.

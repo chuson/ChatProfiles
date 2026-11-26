@@ -39,7 +39,10 @@ read_globals = {
 	"strlenutf8",
 }
 
--- The test sets up its own stand-ins for game globals.
-files["tests/validate.lua"] = {
+-- The tests set up their own stand-ins for game globals.
+files["tests/ExportString.lua"] = {
 	globals = { "Constants", "ChatTypeInfo", "C_EncodingUtil" },
+}
+files["tests/ChatSettings.lua"] = {
+	globals = { "Constants", "C_ChatInfo", "SAY", "GUILD" },
 }

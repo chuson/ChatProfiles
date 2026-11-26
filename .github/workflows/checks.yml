@@ -16,4 +16,4 @@ jobs:
       - uses: leafo/gh-actions-lua@v10
         with:
           luaVersion: "5.1"
-      - run: lua tests/validate.lua
+      - run: lua tests/run.lua
