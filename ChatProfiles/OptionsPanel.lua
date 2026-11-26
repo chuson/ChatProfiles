@@ -88,7 +88,7 @@ local function ShowMessage(text)
 	widgets.message:SetText(text or "")
 end
 
-local function SelectProfile(name)
+local function SwitchProfile(name)
 	local remaining, reason = Profiles.Select(name)
 	if not remaining then
 		ShowMessage(reason)
@@ -167,6 +167,29 @@ StaticPopupDialogs.CHAT_PROFILES_DELETE = {
 	whileDead = true,
 	hideOnEscape = true,
 }
+
+-- Switching between profiles saves the old one first, but a character that isn't using one has
+-- its chat settings saved nowhere, so applying a profile would lose them.
+StaticPopupDialogs.CHAT_PROFILES_REPLACE = {
+	text = 'This character\'s chat settings aren\'t saved in any profile. Replace them with "%s"?\n\n'
+		.. "To keep them, cancel and click New first.",
+	button1 = "Replace",
+	button2 = "Cancel",
+	OnAccept = function(_, name)
+		SwitchProfile(name)
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
+local function SelectProfile(name)
+	if name and not Profiles.Selected() then
+		StaticPopup_Show("CHAT_PROFILES_REPLACE", name, nil, name)
+	else
+		SwitchProfile(name)
+	end
+end
 
 local function Label(text, font, anchor, x, y)
 	local label = panel:CreateFontString(nil, "ARTWORK", font or "GameFontHighlight")

@@ -1,9 +1,10 @@
 ## Interface: 16001
 ## Title: ChatProfiles
 ## Notes: Share your chat tabs, channels and colors between characters.
-## Version: 0.1.0
+## Version: 0.1.1
 ## X-License: GPL-3.0-or-later
 ## SavedVariables: ChatProfilesDB
+## Author: chuson
 
 ChatSettings.lua
 ExportString.lua

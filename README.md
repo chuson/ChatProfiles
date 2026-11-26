@@ -13,7 +13,7 @@ Copy the `ChatProfiles` folder into `World of Warcraft\_forever_\Interface\AddOn
 Open the panel from Esc > Options > AddOns > ChatProfiles, or type `/chatprofiles` or `/chatp`.
 
 - **New** saves your current chat settings as a profile and switches this character to it.
-- **Choosing a profile** from the menu applies it to this character. Your current settings are saved to the old profile first.
+- **Choosing a profile** from the menu applies it to this character. Your current settings are saved to the old profile first. If the character isn't using a profile yet, you're asked before its settings are replaced.
 - **Save now** saves without waiting for logout.
 - **Rename** and **Delete** do what they say. Characters using a deleted profile keep their chat settings.
 - **Export** gives you text to paste to another account or a friend, and **Import** adds a profile from that text.
