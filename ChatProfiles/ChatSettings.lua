@@ -307,6 +307,20 @@ local function IsCustomKey(key)
 	return key:sub(1, 5) == "name:"
 end
 
+-- FCF_DockFrame returns early for a tab that's already docked, so each tab is undocked and
+-- docked again at its place, after General, which never moves. Undocking the selected tab
+-- changes the selection, so it's selected again afterward.
+local function RedockInOrder(frames)
+	local selected = FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK)
+	for i, frame in ipairs(frames) do
+		FCF_UnDockFrame(frame)
+		FCF_DockFrame(frame, i + 1)
+	end
+	if selected then
+		FCFDock_SelectWindow(GENERAL_CHAT_DOCK, selected)
+	end
+end
+
 -- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
 -- says how the live settings differ from the profile, and `apply` makes them match. The panel
 -- shows the text, and Apply runs the same entries, so the two can't disagree.
@@ -324,7 +338,7 @@ function ChatSettings.Diff(live, profile)
 		liveByKey[have.key] = have
 	end
 	for _, want in ipairs(profile.windows) do
-		wanted[want.key] = true
+		wanted[want.key] = want
 		if want.docked ~= false then
 			dockedCount = dockedCount + 1
 			dockIndex[want.key] = dockedCount
@@ -340,6 +354,35 @@ function ChatSettings.Diff(live, profile)
 					FCF_Close(frame)
 				end, true)
 			end
+		end
+	end
+
+	-- Compares the tabs that are docked both live and in the profile, leaving out General. This
+	-- comes before each tab's own changes, since docking a tab locks it. Tabs that are about to be
+	-- docked are left out here and docked at their place by DiffWindow.
+	if categories.tabs then
+		local general = "window:" .. GENERAL_WINDOW
+		local haveOrder, wantOrder = {}, {}
+		for _, have in ipairs(live.windows) do
+			local want = wanted[have.key]
+			if have.key ~= general and have.docked and want and want.docked ~= false then
+				table.insert(haveOrder, have.key)
+			end
+		end
+		for _, want in ipairs(profile.windows) do
+			local have = liveByKey[want.key]
+			if want.key ~= general and want.docked ~= false and have and have.docked then
+				table.insert(wantOrder, want.key)
+			end
+		end
+		if table.concat(haveOrder, "\n") ~= table.concat(wantOrder, "\n") then
+			local frames = {}
+			for i, key in ipairs(wantOrder) do
+				frames[i] = _G["ChatFrame" .. live.windowNumbers[key]]
+			end
+			AddDifference("Tabs in a different order", function()
+				RedockInOrder(frames)
+			end)
 		end
 	end
 

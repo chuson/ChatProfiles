@@ -20,7 +20,7 @@ Chat window setup (tabs, message groups, per-tab channels, appearance) is config
 - Channel *membership* (joining or leaving). Profiles only control which channels each tab shows.
 - Combat log filters. `Blizzard_CombatLog` saves them account-wide, so they already follow every character (open question 8).
 - The messages shown in the Combat Log tab. The client reports message groups for it (open question 14), but they aren't saved.
-- General's position and size, which Edit Mode controls (open question 15), and reordering tabs that are already docked.
+- General's position and size, which Edit Mode controls (open question 15).
 - Chat behavior settings (chat style, whisper mode, timestamps, chat bubbles, mouse-wheel scroll). They are stored per account (section 3), so they already follow every character.
 - A default profile for new characters. Deferred.
 - Undo. Players can export a profile to keep a copy.
@@ -38,7 +38,7 @@ Observed on the live client, and checked against Blizzard's 12.1.5 UI source (se
 | Groups | `frame:AddMessageGroup(group)` / `frame:RemoveMessageGroup(group)` | The `ChatFrame_*` globals are deprecated aliases of these methods and exist only while the `loadDeprecationFallbacks` CVar is on. It is on here, but we don't rely on it. |
 | Channels | `frame:AddChannel(name)` / `frame:RemoveChannel(name)`, `C_ChatInfo.GetChannelShortcutForChannelID(id)` | The shortcut call turns a zone channel ID into the channel's local name. |
 | Tabs | `FCF_OpenNewWindow(name, noDefaultChannels)`, `FCF_Close(frame)` | `FCF_OpenNewWindow` returns `frame, index`, or nothing when every slot is in use. Unless `noDefaultChannels` is set, it adds SAY, YELL, GUILD, WHISPER, BN_WHISPER, PARTY, PARTY_LEADER and CHANNEL. It docks and unlocks the new window, and it doesn't check for an existing tab with the same name. `FCF_Close` undocks and hides the window and clears its groups and channels. |
-| Docking | `FCF_DockFrame(frame, index)`, `FCF_UnDockFrame(frame)`, `FCF_SetTabPosition(frame, 0)`, `FCF_CheckShowChatFrame(frame or tab)` | `FCF_DockFrame` inserts at `index` and locks the tab, and returns early for a tab that's already docked. `FCF_UnDockFrame` leaves the tab in the dock's tab bar and doesn't show a hidden window, so it's followed by `FCF_SetTabPosition` and `FCF_CheckShowChatFrame` for the window and its tab, as Blizzard's unlock path (`FCF_ToggleLock`) does. General can't be undocked. |
+| Docking | `FCF_DockFrame(frame, index)`, `FCF_UnDockFrame(frame)`, `FCF_SetTabPosition(frame, 0)`, `FCF_CheckShowChatFrame(frame or tab)` | `FCF_DockFrame` inserts at `index` and locks the tab, and returns early for a tab that's already docked. `FCF_UnDockFrame` leaves the tab in the dock's tab bar and doesn't show a hidden window, so it's followed by `FCF_SetTabPosition` and `FCF_CheckShowChatFrame` for the window and its tab, as Blizzard's unlock path (`FCF_ToggleLock`) does. General can't be undocked. `FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK)` and `FCFDock_SelectWindow(GENERAL_CHAT_DOCK, frame)` read and restore the selected tab. |
 | Position | `SetChatWindowSavedPosition(i, point, x, y)`, `SetChatWindowSavedDimensions(i, width, height)`, `FCF_RestorePositionAndDimensions(frame)` | The restore applies the saved values to the window. It skips General, whose position belongs to Edit Mode. |
 | Appearance | `FCF_SetChatWindowFontSize(nil, frame, size)`, `FCF_SetWindowColor`, `FCF_SetWindowAlpha`, `FCF_SetLocked(frame, isLocked)` | Signatures confirmed in source. Color and alpha take a trailing `doNotSave`, which we leave nil. |
 | Chat colors | `ChatTypeInfo[type]` (`r`, `g`, `b`, `colorNameByClass`), `ChangeChatColor(type, r, g, b)`, `SetChatColorNameByClass(type, enabled)` | `ChatTypeInfo` is an empty proxy once chat loads (open question 13). Both setter signatures are confirmed in game, and recoloring also updates lines already in the window (open question 12). `CHANNEL1` to `CHANNEL20` colors follow the character's local channel numbers. |
@@ -99,7 +99,7 @@ Each profile stores which categories it manages (`categories`). A category that'
 | Font and background | Text size, background color, and background opacity | on | |
 | Chat colors | The color of each kind of message | on | Includes class-colored names. Stored per character (open question 10). Channel colors follow local channel numbers (section 9). |
 
-Outside every category: chat behavior settings and combat log filters, which are account-wide (section 3, open question 8), General's position (Edit Mode), and the order of tabs that are already docked.
+Outside every category: chat behavior settings and combat log filters, which are account-wide (section 3, open question 8), and General's position (Edit Mode).
 
 ## 5. Architecture
 
@@ -128,7 +128,7 @@ Design points:
 - The engine calls frame methods, never the deprecated `ChatFrame_*` globals.
 - Groups and channels share one set-difference helper.
 - Each change runs under its own `pcall`, so one bad call doesn't stop the rest. Apply ends by reading again and returns what still differs, so a thrown error and a silent no-op are reported the same way.
-- `Apply` is two passes. Pass 1 closes extra tabs, then opens missing ones with `FCF_OpenNewWindow(name, true)`, closing first so a new tab has a free slot. Pass 2 compares again and applies everything else: docking and undocking, position and size, the lock, appearance, groups, channels and colors. Within a tab, the dock change comes before the lock, since docking locks a tab. A tab is docked at its place among the profile's docked tabs.
+- `Apply` is two passes. Pass 1 closes extra tabs, then opens missing ones with `FCF_OpenNewWindow(name, true)`, closing first so a new tab has a free slot. Pass 2 compares again and applies everything else: the order of docked tabs first, then each tab's docking and undocking, position and size, the lock, appearance, groups, channels and colors. Within a tab, the dock change comes before the lock, since docking locks a tab. A tab is docked at its place among the profile's docked tabs.
 - `Read` and `Diff` skip categories the profile doesn't include, so one switch stops both applying and saving that category.
 - Saved positions are compared within 0.001 of the screen size, sizes within half a pixel, and colors within 0.01, since the client rounds what it stores.
 - Constants are named (`GENERAL_WINDOW = 1`, `COMBAT_LOG_WINDOW = 2`, `MAX_WINDOWS = Constants.ChatFrameConstants.MaxChatWindows`). The first custom window is `C_ChatInfo.GetNumReservedChatWindows() + 1`.
@@ -251,7 +251,7 @@ Answers come from Blizzard's 12.1.5 UI source (section 12), in-game checks, a te
 4. **Closing windows.** `FCF_Close(frame)` undocks and hides the window and clears its groups and channels. Hiding clears the window's shown flag through its `OnHide` script, which frees the slot for `FCF_OpenNewWindow`.
 5. **Locked flag.** `FCF_SetLocked` passes its value straight to `SetChatWindowLocked`, and `GetChatWindowInfo` returns `true` or `false` (recorded with a locked and an unlocked tab).
 6. **Font size `0`.** No size was ever saved; the window keeps its default font, and Blizzard's own code skips setting the font for 0. Apply leaves it alone.
-7. **Tab order.** `FCF_DockFrame(frame, index)` inserts at `index` but returns early for a tab that's already docked, so moving a docked tab means undocking it and docking it again. Apply docks a tab at its place in the profile's order, but doesn't reorder tabs that are already docked.
+7. **Tab order.** `FCF_DockFrame(frame, index)` inserts at `index` but returns early for a tab that's already docked, so moving a docked tab means undocking it and docking it again. Apply docks a tab at its place in the profile's order, and when the docked tabs are out of order it undocks each one after General and docks it again at its place, then selects the previously selected tab again.
 8. **Combat log filters.** `Blizzard_CombatLog.toc` lists `Blizzard_CombatLog_Filters` under `SavedVariables`, not `SavedVariablesPerCharacter`, so filters are account-wide. Confirmed on this client: `Blizzard_CombatLog.lua` is in the account-level `SavedVariables` folder.
 9. **Group and channel names.** Group names are the keys of `ChatTypeGroup`. Channel names are localized, but `GetChatWindowChannels` also returns a zone channel ID, which `C_ChatInfo.GetChannelShortcutForChannelID` turns back into the local name, so channels are stored with both. The client does the same in `chat-cache.txt`. Confirmed in game: `C_ChatInfo.GetChannelShortcutForChannelID(47)` returns `OOC`.
 10. **Chat colors per character.** Every character's own `chat-cache.txt` holds a `COLORS` section, so colors are stored per character and the Chat colors category is on by default.

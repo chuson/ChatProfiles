@@ -57,11 +57,19 @@ local GAME_FUNCTIONS = {
 	"FCF_SetWindowAlpha",
 	"ChangeChatColor",
 	"SetChatColorNameByClass",
+	"FCFDock_SelectWindow",
 }
 for _, name in ipairs(GAME_FUNCTIONS) do
 	_G[name] = function(...)
 		Record(name, ...)
 	end
+end
+
+-- The dock's selected tab. A test sets it to check that reordering selects it again.
+GENERAL_CHAT_DOCK = { name = "GENERAL_CHAT_DOCK" }
+local selectedTab
+function FCFDock_GetSelectedWindow()
+	return selectedTab
 end
 
 local ns = {}
@@ -302,9 +310,81 @@ ExpectDiff(
 	{ "whispers: undocked instead of docked", "whispers: locked differently" }
 )
 
+-- Tab order. Live tabs here get windows 4, 5, ... in list order, and Read lists docked tabs in
+-- dock order, so the order of the Live list is the dock order.
+
+local function Docked(name)
+	return Tab(name, { docked = true })
+end
+
+ExpectDiff(
+	"docked tabs in the profile's order",
+	Live({ General({ docked = true }), Docked("party"), Docked("trade") }),
+	Profile({ General({ docked = true }), Docked("party"), Docked("trade") }),
+	{}
+)
+local reorder = ExpectDiff(
+	"docked tabs in a different order",
+	Live({ General({ docked = true }), Docked("trade"), Docked("party"), Docked("whispers") }),
+	Profile({ General({ docked = true }), Docked("party"), Docked("trade"), Docked("whispers") }),
+	{ "Tabs in a different order" },
+	{
+		"FCF_UnDockFrame ChatFrame5",
+		"FCF_DockFrame ChatFrame5 2",
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_DockFrame ChatFrame4 3",
+		"FCF_UnDockFrame ChatFrame6",
+		"FCF_DockFrame ChatFrame6 4",
+	}
+)
+Check(not reorder[1].opensOrClosesTab, "reordering is flagged as opening or closing a tab")
+
+selectedTab = ChatFrame4
+Equal(
+	ApplyAll(Diff(
+		Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
+		Profile({ General({ docked = true }), Docked("party"), Docked("trade") })
+	))[5],
+	"FCFDock_SelectWindow GENERAL_CHAT_DOCK ChatFrame4",
+	"the selected tab wasn't selected again after reordering"
+)
+selectedTab = nil
+
+ExpectDiff(
+	"an order that differs only by a tab about to be docked",
+	Live({ General({ docked = true }), Docked("party"), Tab("trade", UNDOCKED) }),
+	Profile({ General({ docked = true }), Docked("trade"), Docked("party") }),
+	{ "trade: undocked instead of docked" },
+	{ "FCF_DockFrame ChatFrame5 2" }
+)
+ExpectDiff(
+	"an order that differs only by a tab the profile has undocked",
+	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
+	Profile({ General({ docked = true }), Docked("party"), Tab("trade", { docked = false }) }),
+	{ "trade: docked instead of undocked" }
+)
+ExpectDiff(
+	"a different order from a profile saved before dock state was stored",
+	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
+	Profile({ General(), Tab("party"), Tab("trade") }),
+	{ "Tabs in a different order" }
+)
+ExpectDiff(
+	"a different order with Tabs off",
+	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
+	Profile({ General(), Docked("party"), Docked("trade") }, nil, AllCategoriesExcept("tabs")),
+	{}
+)
+ExpectDiff(
+	"reordering before a lock change",
+	Live({ General({ docked = true }), Docked("trade"), Tab("party", { docked = true, locked = false }) }),
+	Profile({ General({ docked = true }), Tab("party", { docked = true, locked = true }), Docked("trade") }),
+	{ "Tabs in a different order", "party: locked differently" }
+)
+
 -- Font and background
 
-local looks ={ fontSize = 12, r = 0.5, g = 0, b = 0, a = 0.25 }
+local looks = { fontSize = 12, r = 0.5, g = 0, b = 0, a = 0.25 }
 ExpectDiff(
 	"a different font size, background color and opacity",
 	Live({ General(looks) }),
