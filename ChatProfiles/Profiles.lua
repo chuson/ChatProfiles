@@ -19,14 +19,29 @@ local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
 
+-- Removes spaces from both ends. %s only matches English spaces, so the non-breaking space and
+-- the wide space that Chinese and Japanese keyboards type are removed separately.
+local function TrimSpaces(text)
+	local before
+	repeat
+		before = text
+		text = text:match("^%s*(.-)%s*$")
+		text = text:gsub("^\194\160", ""):gsub("\194\160$", "")
+		text = text:gsub("^\227\128\128", ""):gsub("\227\128\128$", "")
+	until text == before
+	return text
+end
+
 local function CheckNewName(name)
-	-- Strip "|" (escape codes) before trimming, so "a |" doesn't leave a trailing space.
-	name = (name or ""):gsub("|", ""):match("^%s*(.-)%s*$")
+	name = TrimSpaces(name or "")
 	-- Count letters, as the Name box does. # counts bytes, and a letter outside English takes several.
 	local letters = strlenutf8(name)
 	local limit = Profiles.MAX_PROFILE_NAME_LENGTH
 	if letters == 0 then
 		return nil, "Give the profile a name first."
+	elseif name:find("[|%c]") then
+		-- "|" starts the client's color and link codes. "||" shows a single "|" in the message.
+		return nil, "Names can't contain || or line breaks."
 	elseif letters > limit then
 		return nil, "That name is too long. Names can be up to " .. limit .. " characters."
 	elseif db.profiles[name] then

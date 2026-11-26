@@ -1,13 +1,26 @@
--- Checks the import validator against good and malformed profiles.
+-- Checks imports: how pasted text is read, and the validator against good and malformed profiles.
 -- Run from the repository root with Lua 5.1 or later: lua tests/validate.lua
 
--- Stand-ins for the two game globals the validator reads.
+-- Stand-ins for the game globals that ExportString reads. The decoders only record what
+-- they were given, since the test checks what Import passes them, not Base64 or CBOR.
 Constants = { ChatFrameConstants = { MaxChatWindows = 10 } }
 ChatTypeInfo = { SAY = {}, GUILD = {}, CHANNEL1 = {} }
+local decodedText
+C_EncodingUtil = {
+	DecodeBase64 = function(text)
+		decodedText = text
+		return text
+	end,
+	DeserializeCBOR = function()
+		return { categories = {}, windows = {} }
+	end,
+}
 
 local ns = {}
 assert(loadfile("ChatProfiles/ExportString.lua"))("ChatProfiles", ns)
-local Validate = ns.ExportString.Validate
+local Validate, Import = ns.ExportString.Validate, ns.ExportString.Import
+
+local KOREAN_LETTER = "\237\149\156" -- three bytes
 
 local function GoodProfile()
 	return {
@@ -44,18 +57,31 @@ local function Expect(description, shouldPass, change)
 		failures = failures + 1
 		print("FAIL: " .. description .. (reason and (" (" .. reason .. ")") or ""))
 	end
-	return result
+	return result, reason
 end
 
 local function Accepts(description, change)
-	return Expect(description, true, change)
+	return (Expect(description, true, change))
 end
 
+-- Returns the reason given.
 local function Rejects(description, change)
-	Expect(description, false, change)
+	local _, reason = Expect(description, false, change)
+	return reason
 end
 
--- Accepted, and cleaned where needed
+local function Fail(message)
+	failures = failures + 1
+	print("FAIL: " .. message)
+end
+
+-- Reading pasted text
+Import("  ChatProfiles1:ab\r\ncd ef\n")
+if decodedText ~= "abcdef" then
+	Fail("line breaks and spaces inside a pasted export were not removed: " .. tostring(decodedText))
+end
+
+-- Accepted
 Accepts("a complete profile")
 Accepts("a profile without colors", function(p)
 	p.colors = nil
@@ -63,13 +89,14 @@ end)
 Accepts("a tab with only a key and name", function(p)
 	p.windows = { { key = "name:x", name = "x" } }
 end)
-local cleaned = Accepts("names containing |", function(p)
-	p.windows[3].name = "tr|cffff0000ade"
+local unusualName = "a||b " .. KOREAN_LETTER
+local kept = Accepts("names with a literal | and letters outside English", function(p)
+	p.windows[3].name = unusualName
 	p.windows[3].key = "name:anything"
+	p.windows[1].channels[2].name = KOREAN_LETTER
 end)
-if cleaned and (cleaned.windows[3].name ~= "trcffff0000ade" or cleaned.windows[3].key ~= "name:trcffff0000ade") then
-	failures = failures + 1
-	print("FAIL: | not stripped, or the key not rebuilt from the cleaned name")
+if kept and (kept.windows[3].name ~= unusualName or kept.windows[3].key ~= "name:" .. unusualName) then
+	Fail("a name was changed on import, or the key wasn't built from it")
 end
 
 -- Rejected
@@ -111,9 +138,34 @@ end)
 Rejects("a bad key", function(p)
 	p.windows[1].key = "window:3"
 end)
-Rejects("a name that is only |", function(p)
-	p.windows[3].name = "||"
+Rejects("a name with a color code", function(p)
+	p.windows[3].name = "tr|cffff0000ade"
 end)
+Rejects("a name with a single | after a literal one", function(p)
+	p.windows[3].name = "a|||b"
+end)
+Rejects("a name with a line break", function(p)
+	p.windows[3].name = "tr\nade"
+end)
+Rejects("a name with a NUL byte", function(p)
+	p.windows[3].name = "tr\0ade"
+end)
+Rejects("a name with a byte that isn't UTF-8", function(p)
+	p.windows[3].name = "tr\255ade"
+end)
+Rejects("a name with a letter cut short", function(p)
+	p.windows[3].name = "trade" .. KOREAN_LETTER:sub(1, 2)
+end)
+Rejects("a channel name with a control character", function(p)
+	p.windows[1].channels[2].name = "My\tChannel"
+end)
+local reason = Rejects("an unknown field with a long name in another alphabet", function(p)
+	p.windows[1]["a" .. KOREAN_LETTER:rep(20)] = true
+end)
+-- The quoted field is cut at 30 bytes: "a" and 9 whole letters, not part of a 10th.
+if not (reason or ""):find("unknown field a" .. KOREAN_LETTER:rep(9) .. " in", 1, true) then
+	Fail("a quoted field name wasn't cut between letters: " .. tostring(reason))
+end
 Rejects("a name that is too long", function(p)
 	p.windows[3].name = string.rep("a", 201)
 end)

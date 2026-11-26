@@ -34,9 +34,14 @@ local function ReadChannels(windowNumber)
 	return channels
 end
 
+-- Once chat loads, the client moves every ChatTypeInfo entry into its metatable's __index and
+-- empties the table itself. ChatTypeInfo.SAY still finds its entry, but pairs(ChatTypeInfo)
+-- finds nothing, so loop over __index when it's there.
 local function ReadColors()
+	local metatable = getmetatable(ChatTypeInfo)
+	local chatTypes = metatable and type(metatable.__index) == "table" and metatable.__index or ChatTypeInfo
 	local colors = {}
-	for chatType, info in pairs(ChatTypeInfo) do
+	for chatType, info in pairs(chatTypes) do
 		if info.r then
 			colors[chatType] = { r = info.r, g = info.g, b = info.b, classColoredNames = info.colorNameByClass }
 		end
@@ -221,12 +226,12 @@ local function DiffWindow(frame, have, want, categories, addDifference)
 			return group
 		end)
 		for _, group in ipairs(missing) do
-			addDifference(have.name .. ": no " .. ChatTypeName(group) .. " messages", function()
+			addDifference(have.name .. ": doesn't show " .. ChatTypeName(group) .. " messages", function()
 				frame:AddMessageGroup(group)
 			end)
 		end
 		for _, group in ipairs(extra) do
-			addDifference(have.name .. ": extra " .. ChatTypeName(group) .. " messages", function()
+			addDifference(have.name .. ": also shows " .. ChatTypeName(group) .. " messages", function()
 				frame:RemoveMessageGroup(group)
 			end)
 		end
@@ -236,13 +241,13 @@ local function DiffWindow(frame, have, want, categories, addDifference)
 		local missing, extra = SetDifference(have.channels, want.channels, ChannelKey)
 		for _, channel in ipairs(missing) do
 			local name = ClientChannelName(channel)
-			addDifference(have.name .. ": no " .. name .. " channel", function()
+			addDifference(have.name .. ": doesn't show the " .. name .. " channel", function()
 				frame:AddChannel(name)
 			end)
 		end
 		-- The live name is already in this client's language.
 		for _, channel in ipairs(extra) do
-			addDifference(have.name .. ": extra " .. channel.name .. " channel", function()
+			addDifference(have.name .. ": also shows the " .. channel.name .. " channel", function()
 				frame:RemoveChannel(channel.name)
 			end)
 		end

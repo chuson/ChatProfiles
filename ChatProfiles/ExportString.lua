@@ -1,6 +1,6 @@
 -- Builds export strings and checks imported ones. An imported string is untrusted, so every
 -- field is checked, and anything unexpected rejects the whole string. Nothing is clamped or
--- quietly fixed, except that "|" is removed from names.
+-- quietly fixed.
 
 local _, ns = ...
 
@@ -40,9 +40,21 @@ local function Check(ok, reason)
 	end
 end
 
--- Makes an untrusted value safe to show in an error message on the panel.
+-- Makes an untrusted value safe to show in an error message on the panel: no codes, no line
+-- breaks, and at most 30 bytes.
 local function SafeText(value)
-	return (tostring(value):gsub("|", ""):sub(1, 30))
+	local text = tostring(value):gsub("[|%c]", "")
+	if #text <= 30 then
+		return text
+	end
+	-- Bytes 128 to 191 continue a letter. If one comes right after the cut, the cut split a
+	-- letter, so drop the part of it that was kept.
+	local nextByte = text:byte(31)
+	local cut = text:sub(1, 30)
+	if nextByte >= 128 and nextByte <= 191 then
+		cut = cut:gsub("[\192-\255][\128-\191]*$", "")
+	end
+	return cut
 end
 
 local function CheckFields(t, allowed, what)
@@ -77,19 +89,51 @@ local function CheckBoolean(value, what)
 	Check(value == nil or type(value) == "boolean", what .. " must be true or false")
 end
 
--- "|" starts the client's color and link escape codes, so it's stripped from anything shown as a name.
-local function CleanName(value, what)
+-- A damaged or hand-edited export can hold bytes that don't form letters. Lua 5.1 has no UTF-8
+-- library, so this walks the text: each letter is a lead byte followed by 0 to 3 bytes from 128 to 191.
+local function IsValidUTF8(text)
+	local i = 1
+	while i <= #text do
+		local byte = text:byte(i)
+		local length
+		if byte < 128 then
+			length = 1
+		elseif byte >= 194 and byte <= 223 then
+			length = 2
+		elseif byte >= 224 and byte <= 239 then
+			length = 3
+		elseif byte >= 240 and byte <= 244 then
+			length = 4
+		else
+			return false
+		end
+		for j = i + 1, i + length - 1 do
+			local continuation = text:byte(j)
+			if not continuation or continuation < 128 or continuation > 191 then
+				return false
+			end
+		end
+		i = i + length
+	end
+	return true
+end
+
+-- Tab and channel names are imported exactly as they are, or rejected. "||" is how the client
+-- writes a literal "|", but a single "|" starts a color, link or icon code.
+local function CheckName(value, what)
 	Check(type(value) == "string", what .. " is not text")
-	local name = value:gsub("|", "")
-	Check(name ~= "" and #name <= MAX_TEXT_BYTES, what .. " is empty or too long")
-	return name
+	Check(value ~= "" and #value <= MAX_TEXT_BYTES, what .. " is empty or too long")
+	Check(not value:gsub("||", ""):find("|", 1, true), what .. " contains a color or link code")
+	Check(not value:find("%c"), what .. " contains a line break or another control character")
+	Check(IsValidUTF8(value), what .. " contains damaged text")
 end
 
 local function CleanWindow(window, what)
 	Check(type(window) == "table", what .. " is not a table")
 	CheckFields(window, WINDOW_FIELDS, what)
 
-	local clean = { name = CleanName(window.name, what .. " name") }
+	CheckName(window.name, what .. " name")
+	local clean = { name = window.name }
 	if window.key == "window:1" or window.key == "window:2" then
 		clean.key = window.key
 	else
@@ -138,7 +182,8 @@ local function CleanWindow(window, what)
 			CheckFields(channel, CHANNEL_FIELDS, what .. " channel")
 			local id = channel.zoneChannelID
 			Check(type(id) == "number" and id >= 0 and id % 1 == 0, what .. " has an invalid channel ID")
-			clean.channels[i] = { name = CleanName(channel.name, what .. " channel name"), zoneChannelID = id }
+			CheckName(channel.name, what .. " channel name")
+			clean.channels[i] = { name = channel.name, zoneChannelID = id }
 		end
 	end
 
@@ -208,7 +253,8 @@ function ExportString.Import(text)
 	if #text > MAX_PASTE_LENGTH then
 		return nil, "the text is too long to be a Chat Profiles export"
 	end
-	text = text:match("^%s*(.-)%s*$")
+	-- Forums and chat apps can wrap a long line or add spaces. Base64 never contains either.
+	text = text:gsub("%s", "")
 	if text == "" then
 		return nil, "the box is empty"
 	elseif text:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then

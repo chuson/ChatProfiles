@@ -8,7 +8,7 @@ local CONTENT_WIDTH = 600
 local MAX_DETAIL_LINES = 8
 local CATEGORIES = {
 	{ key = "tabs", label = "Tabs" },
-	{ key = "messagesAndChannels", label = "Messages and channels" },
+	{ key = "messagesAndChannels", label = "Message filters" },
 	{ key = "fontAndBackground", label = "Font and background" },
 	{ key = "colors", label = "Chat colors" },
 }

@@ -36,5 +36,5 @@ read_globals = {
 
 -- The test sets up its own stand-ins for game globals.
 files["tests/validate.lua"] = {
-	globals = { "Constants", "ChatTypeInfo" },
+	globals = { "Constants", "ChatTypeInfo", "C_EncodingUtil" },
 }
