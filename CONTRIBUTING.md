@@ -62,7 +62,20 @@ The `Read` tests replay what the game returned on a real character, in `tests/fi
 3. Run the tests. Where they fail, decide whether the client changed or the test assumed too much.
 4. Clear the recording with `/run ChatProfilesDB.capture=nil` and another `/reload`.
 
+## AI-assisted contributions
+
+AI-assisted work is welcome, as long as it's disclosed: add a `Co-Authored-By:` line for the tool to each commit it helped with, as this repo's history does.
+
+You're the author of anything you submit, however it was written. That means:
+
+- You've read and understood every line, and you can explain it in review.
+- Every game API it uses is real, current and present on the client. Follow the steps in [Code](#code) for each new one.
+- You've tested the change in game, and it works as you describe it.
+- The pull request description is yours: what changed, why, and what you tested.
+
 ## Sending a change
+
+I'm happy to look at pull requests, though I can't promise to merge every one. For anything larger, it's worth opening an issue first so we can agree on the approach.
 
 - Keep each pull request to one change, and say what you tested.
 - Review it one area at a time: architecture, size, order, naming, comments, correctness, efficiency.
