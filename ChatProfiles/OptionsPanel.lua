@@ -22,7 +22,7 @@ local CATEGORIES = {
 		label = "Font and background",
 		description = "Text size, background color, and background opacity",
 	},
-	{ key = "colors", label = "Chat colors", description = "The color of each kind of message" },
+	{ key = "colors", label = "Chat colors", description = "Colors for all message types" },
 }
 
 local panel = CreateFrame("Frame")

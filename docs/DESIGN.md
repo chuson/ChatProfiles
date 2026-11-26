@@ -96,7 +96,7 @@ Each profile stores which categories it manages (`categories`). A category that'
 | Tabs | Which tabs you have, their order, the position of undocked tabs, and whether each tab is locked | on | Off: apply never creates, closes, docks, reorders or moves tabs. |
 | Message filters (`messagesAndChannels`) | Which messages and channels each tab shows | on | Includes the Combat Log tab's groups, such as XP and honor gains, which are stored per character (open question 14). |
 | Font and background | Text size, background color, and background opacity | on | |
-| Chat colors | The color of each kind of message | on | Includes class-colored names. Stored per character (open question 10). Channel colors follow local channel numbers (section 9). |
+| Chat colors | Colors for all message types | on | Includes class-colored names. Stored per character (open question 10). Channel colors follow local channel numbers (section 9). |
 
 Outside every category: chat behavior settings and combat log filters, which are account-wide (section 3, open question 8), and General's position (Edit Mode).
 
@@ -202,7 +202,7 @@ Saved in this profile
 [x] Font and background
     Text size, background color, and background opacity
 [x] Chat colors
-    The color of each kind of message
+    Colors for all message types
 
 Sharing
 [Export]  [Import]  Copy a profile to another account, or share it with a friend.
