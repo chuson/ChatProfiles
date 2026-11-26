@@ -17,3 +17,19 @@ jobs:
         with:
           luaVersion: "5.1"
       - run: lua tests/run.lua
+
+  # A released version always means the same files. Once the .toc's version has a tag, changing
+  # the addon without bumping ## Version gets a warning, long before anyone tries to release it.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the addon hasn't changed since its version was released
+        run: |
+          version=$(sed -n 's/^## Version: *//p' ChatProfiles/ChatProfiles.toc | tr -d '\r')
+          if git rev-parse -q --verify "refs/tags/v$version" > /dev/null \
+            && ! git diff --quiet "v$version" HEAD -- ChatProfiles; then
+            echo "::warning file=ChatProfiles/ChatProfiles.toc::ChatProfiles changed since v$version was released. Bump ## Version before the next release."
+          fi
