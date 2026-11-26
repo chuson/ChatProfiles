@@ -90,7 +90,7 @@ The list holds tabs, but it's called `windows` because that's the client's word.
 
 ### Setting categories
 
-Each profile stores which categories it manages (`categories`). A category that's turned off is neither applied nor saved, so the character, or another addon, keeps control of it. With every category off, a profile is neither saved nor exported: the panel shows a warning in red and disables Save now and Export until one is back on, and imports with none on are rejected. New starts with every category on when the selected profile has none. The panel shows each one with a short description.
+Each profile stores which categories it manages (`categories`). A category that's turned off is neither applied nor saved, so the character, or another addon, keeps control of it. Checkbox changes are unsaved changes like any other: the panel lists them, the next save (Save now or logout) stores them, and switching profiles discards them. Turning a category off drops its saved data only when that save happens, so an abandoned change leaves the profile as it was. A profile always keeps at least one category on. With every box unchecked, the panel shows a warning in red, disables Save now, and saving is skipped, so the profile keeps its last saved selection. Imports with none on are rejected, and saved variables that have a profile with none on (possible in 0.1.1) get all four turned back on when they load. The panel shows each one with a short description.
 
 | Category | Panel description | Default | Notes |
 | --- | --- | --- | --- |
@@ -140,18 +140,18 @@ A character uses at most one profile. Selecting a profile applies it, and while 
 | Trigger | Condition | Action |
 | --- | --- | --- |
 | Login (`PLAYER_LOGIN`) | uses a profile | apply the profile, after combat ends if it started in combat; on failure, stop saving this session |
-| Select a profile | not in combat | save into the old profile, then apply the new one |
+| Select a profile | not in combat | discard unsaved changes, then apply the new one |
 | New | always | live chat becomes a new profile, and this character uses it |
 | Save now (panel button) | uses a profile, session not failed | save live chat into the profile immediately |
 | Logout (`PLAYER_LOGOUT`) | uses a profile, session not failed | save live chat into the profile |
 
 - **Login** (`PLAYER_LOGIN`, which also fires on `/reload`): apply the profile. Apply only changes what differs, so a character already in sync is left alone. If anything still differs afterward, the session is marked failed and chat prints a short warning. The apply runs one frame after the event (`C_Timer.After(0)`), so other addons' login handlers, such as chat history restore, finish first. The client's downloaded chat settings arrive before `PLAYER_LOGIN` and nothing changes afterward (open question 1), so there is no retry and no fixed delay.
 - **Combat.** The game blocks some chat changes in combat, and a blocked change does nothing without raising an error, so an apply in combat fails and stops saving. Selecting a profile in combat is refused with a message. If a `/reload` happens in combat, the login apply waits for `PLAYER_REGEN_ENABLED`, and saves are skipped until it runs, since the live settings aren't the profile's yet.
-- **Select** (panel menu): save the current chat into the previously selected profile, if any, then apply the new one and list anything that didn't take. **None** saves into the old profile and detaches the character.
-- **Save** is `Profiles.SaveSelected()`: it replaces the profile's windows and colors with `ChatSettings.Read()`. It saves even when nothing seems to differ, because a category that was just turned on has no saved data yet, so the comparison can't see its changes. Categories that are turned off are dropped, and with every category off it saves nothing rather than emptying the profile. It runs at `PLAYER_LOGOUT`, on **Save now**, and just before switching profiles. `PLAYER_LOGOUT` fires on both logout and `/reload`, the chat APIs still return the live setup when it fires (open question 2), and it is the last event before saved variables are written.
-- **New** saves the live setup as a new profile and switches this character to it, keeping the selected profile's categories so one turned off on purpose stays off. The previous profile is left as it was.
+- **Select** (panel menu): apply the new profile and list anything that didn't take. Unsaved changes, including checkbox changes, are discarded rather than saved into the old profile: switching away while Save now is available means the player chose not to keep them, and the old profile stays as last saved. **None** detaches the character without saving.
+- **Save** is `Profiles.SaveSelected()`: it replaces the profile's windows and colors with `ChatSettings.Read()`. It saves even when nothing seems to differ, because a category that was just turned on has no saved data yet, so the comparison can't see its changes. Categories that are turned off are dropped, and with every category off it saves nothing rather than emptying the profile. It runs at `PLAYER_LOGOUT` and on **Save now**. `PLAYER_LOGOUT` fires on both logout and `/reload`, the chat APIs still return the live setup when it fires (open question 2), and it is the last event before saved variables are written.
+- **New** saves the live setup as a new profile and switches this character to it, starting from the checkboxes as they are (or all four, if none is checked) so a category turned off on purpose stays off. The previous profile is left as it was.
 - **No version numbers.** Login and logout use the same comparison with opposite winners: the profile wins at login, and the character wins at logout, so a character that changed its chat has always saved before the next login. The one case this can't distinguish is a session that ended without its logout save (a crash, or the guard below). The next login then restores the profile, and that session's changes are lost. This matches the accepted crash risk in section 9.
-- **Apply guard.** If an apply (at login or on select) still leaves differences, the session is marked failed and every save is skipped until an apply succeeds, New is used, or the player reloads, including the save-first step of a profile switch. A half-applied state must not overwrite the profile, because other characters share it. The panel's status line says so, and Save now is disabled.
+- **Apply guard.** If an apply (at login or on select) still leaves differences, the session is marked failed and every save is skipped until an apply succeeds, New is used, or the player reloads. A half-applied state must not overwrite the profile, because other characters share it. The panel's status line says so, and Save now is disabled.
 - ChatProfiles neither relies on nor changes the client's own chat upload (`synchronizeChatFrames = 1`).
 
 ### Compatibility with other chat addons
@@ -214,20 +214,21 @@ Sharing
 Behavior:
 
 - The status line reads "This character isn't using a profile.", "Your chat settings match the profile.", "N unsaved changes…", or, after a failed apply, that changes won't be saved until a reload or login. Up to 8 differences are listed below it, followed by any duplicate tab names. The status is worked out when the panel opens, after each of its actions, and when the mouse comes back over the panel. Changing chat settings fires no events (checked in game by listening for every chat-related event), so returning to the panel is the cue that something may have changed.
-- Selecting a profile applies it, after saving the current chat into the previously selected profile, so no changes are lost on a switch. In combat, the panel says profiles can't be switched and nothing changes.
-- On a character that isn't using a profile, selecting one first asks for confirmation in a popup, since that character's chat settings aren't saved anywhere. The popup suggests clicking New first to keep them.
-- While no category is checked, a red line under the checkboxes says changes aren't saved, and Save now and Export are disabled.
+- Selecting a profile applies it and discards unsaved changes, so switching away is how to abandon them. In combat, the panel says profiles can't be switched and nothing changes.
+- On a character that isn't using a profile, selecting one asks for confirmation in a popup if its chat settings would be lost: they differ from the chosen profile, and from every profile that saves at least the same categories. The popup suggests clicking New first to keep them.
+- Checkbox changes count as unsaved changes and are listed first, for example "Chat colors turned off". While no box is checked, a red line under the checkboxes says changes aren't saved, and Save now is disabled.
 - **New** and **Rename** ask for a name in a popup. A rejected name shows the reason at the top of the screen and keeps the popup open. Renaming to the same name just closes it.
 - **Delete** confirms in a popup. Characters using the profile keep their chat settings.
-- **Export** shows the export string in the box, selected for Ctrl+C, since addons can't write to the clipboard. **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup.
+- **Export** shows the export string in the box, selected for Ctrl+C, since addons can't write to the clipboard. The string is the saved profile. While there are unsaved changes, a red note says to Save now to include them, and an open export updates itself after a save or a profile switch. **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup.
 - Chat settings change only by selecting a profile or through the game's own chat UI. Import adds a profile to the list and nothing else.
 - **Save now** runs the same save as logout, immediately, so the status line and Export reflect the change at once. The client still writes it to disk at the next logout or `/reload`.
-- The category checkboxes belong to the profile, so every character using it manages the same categories, and export strings carry the selection.
+- The saved categories belong to the profile, so every character using it manages the same categories, and export strings carry the saved selection.
 
 ## 9. Risks and accepted trade-offs
 
-- No undo. Selecting a profile on a character that uses none overwrites its setup with nothing saved first. Mitigation: the panel asks for confirmation and suggests New first.
+- No undo. Selecting a profile on a character that uses none overwrites its setup with nothing saved first. Mitigation: if the setup matches no profile, the panel asks for confirmation and suggests New first.
 - A change on one character is saved into the shared profile and applied on every character that uses it at its next login. Two characters using the same profile: last logout wins. Accepted.
+- Switching profiles discards unsaved changes. Accepted: Save now is beside the menu, and discarding keeps the old profile exactly as last saved.
 - A failed apply skips saving (section 6), so partial failures can't spread through a shared profile.
 - The login apply relies on the client's chat settings being final by `PLAYER_LOGIN`, which was measured on one character (open question 1). The post-apply check and the apply guard catch a late overwrite if one happens.
 - Chat APIs may change between patches. The engine isolates them in one file, the post-apply comparison surfaces silent no-ops, and the `Read` tests replay a recording of a real client, which can be redone after a patch.
@@ -269,7 +270,7 @@ Answers come from Blizzard's 12.1.5 UI source (section 12), in-game checks, a te
 ## 11. Build and test plan
 
 1. **Engine.** `ChatSettings.lua` with the API above.
-2. **Profiles.** Storage, select with save-first, the login apply with its check and failure guard, the logout save, Save now, categories, and rename and delete updating `profileByCharacter`.
+2. **Profiles.** Storage, select (discarding unsaved changes), the login apply with its check and failure guard, the logout save, Save now, categories, and rename and delete updating `profileByCharacter`.
 3. **Import and export.** `ExportString.lua` and its validator.
 4. **UI.** The panel over `Profiles` and `ExportString`.
 5. **Automated tests.** `lua tests/run.lua` runs one file per module (`tests/ExportString.lua`, `tests/ChatSettings.lua`). They cover reading pasted text, exporting, every import check from both sides of each limit, what `Diff` reports and the game calls each change makes, and `Read` against a recording of a real client. CONTRIBUTING explains how to record a new one.

@@ -63,28 +63,50 @@ local function DetailText(differences, duplicateTabNames)
 	return table.concat(lines, "\n")
 end
 
+-- Everything the next save would store: checkbox changes first, then each setting that differs.
+-- Both are nil when this character has no profile.
+local function UnsavedChanges()
+	local differences, duplicateTabNames = Profiles.Differences()
+	if not differences then
+		return nil
+	end
+	local changes = {}
+	local categoryChanges = Profiles.UnsavedCategoryChanges()
+	for _, category in ipairs(CATEGORIES) do
+		local on = categoryChanges[category.key]
+		if on ~= nil then
+			table.insert(changes, { text = category.label .. (on and " turned on" or " turned off") })
+		end
+	end
+	for _, difference in ipairs(differences) do
+		table.insert(changes, difference)
+	end
+	return changes, duplicateTabNames
+end
+
 local function Refresh()
 	local name, profile = Profiles.Selected()
 	local applyFailed = Profiles.LastApplyFailed()
+	local categories = Profiles.Categories()
 
 	-- The dropdown doesn't notice profile changes on its own.
 	widgets.dropdown:GenerateMenu()
 	for _, checkbox in ipairs(widgets.checkboxes) do
-		checkbox:SetChecked(profile ~= nil and profile.categories[checkbox.category])
+		checkbox:SetChecked(categories ~= nil and categories[checkbox.category])
 		checkbox:SetEnabled(profile ~= nil)
 	end
-	-- With every category off, nothing is saved, and an export couldn't be imported.
-	local hasCategory = profile ~= nil and Profiles.HasCategoryOn(profile)
+	-- With every box unchecked, saving would keep nothing, so it waits for one to be checked.
+	local hasCategory = categories ~= nil and Profiles.HasCategoryOn(categories)
 	widgets.categoryWarning:SetShown(profile ~= nil and not hasCategory)
 	widgets.rename:SetEnabled(profile ~= nil)
 	widgets.delete:SetEnabled(profile ~= nil)
-	widgets.export:SetEnabled(hasCategory)
+	widgets.export:SetEnabled(profile ~= nil)
 	widgets.saveNow:SetEnabled(hasCategory and not applyFailed)
 
-	-- Both are nil when this character has no profile.
-	local differences, duplicateTabNames = Profiles.Differences()
-	widgets.status:SetText(StatusText(name, applyFailed, differences))
-	widgets.details:SetText(DetailText(differences or {}, duplicateTabNames or {}))
+	local changes, duplicateTabNames = UnsavedChanges()
+	widgets.status:SetText(StatusText(name, applyFailed, changes))
+	widgets.details:SetText(DetailText(changes or {}, duplicateTabNames or {}))
+	widgets.UpdateExport()
 end
 
 local function ShowMessage(text)
@@ -171,10 +193,10 @@ StaticPopupDialogs.CHAT_PROFILES_DELETE = {
 	hideOnEscape = true,
 }
 
--- Switching between profiles saves the old one first, but a character that isn't using one has
--- its chat settings saved nowhere, so applying a profile would lose them.
+-- A character that isn't using a profile may have settings that match no profile, and applying
+-- one would lose them.
 StaticPopupDialogs.CHAT_PROFILES_REPLACE = {
-	text = 'This character\'s chat settings aren\'t saved in any profile. Replace them with "%s"?\n\n'
+	text = 'This character\'s chat settings don\'t match any of your profiles. Replace them with "%s"?\n\n'
 		.. "To keep them, cancel and click New first.",
 	button1 = "Replace",
 	button2 = "Cancel",
@@ -187,7 +209,7 @@ StaticPopupDialogs.CHAT_PROFILES_REPLACE = {
 }
 
 local function SelectProfile(name)
-	if name and not Profiles.Selected() then
+	if name and not Profiles.Selected() and Profiles.WouldLoseUnsavedSettings(name) then
 		StaticPopup_Show("CHAT_PROFILES_REPLACE", name, nil, name)
 	else
 		SwitchProfile(name)
@@ -370,19 +392,46 @@ local function BuildSharingSection(anchor)
 		pasteBox.EditBox:SetFocus()
 	end
 
+	local showingExport = false
+	local function ExportHint()
+		local hintText = "Control + C to copy"
+		if #UnsavedChanges() > 0 then
+			hintText = hintText .. "  ·  " .. RED_FONT_COLOR:WrapTextInColorCode("Save now to include your changes")
+		end
+		return hintText
+	end
+
 	widgets.export:SetScript("OnClick", function()
 		local _, profile = Profiles.Selected()
-		local hintText = "Press Ctrl+C to copy it."
-		if #Profiles.Differences() > 0 then
-			hintText = hintText .. " It's the saved profile, so your unsaved changes aren't included."
-		end
+		showingExport = true
 		-- Addons can't write to the clipboard, so select the text for the player to copy.
-		ShowPasteBox(ExportString.Export(profile), hintText)
+		ShowPasteBox(ExportString.Export(profile), ExportHint())
 		pasteBox.EditBox:HighlightText()
 	end)
 	import:SetScript("OnClick", function()
+		showingExport = false
 		ShowPasteBox("", "Paste a ChatProfiles export in the box, then click Add profile.", true)
 	end)
+
+	-- Called on every Refresh, so an open export follows saves and profile switches. The text is
+	-- only replaced when it changes, since replacing it clears the player's selection.
+	function widgets.UpdateExport()
+		if not showingExport or not pasteBox:IsShown() then
+			return
+		end
+		local _, profile = Profiles.Selected()
+		if not profile then
+			showingExport = false
+			HidePasteArea()
+			return
+		end
+		local text = ExportString.Export(profile)
+		if text ~= pasteBox.EditBox:GetText() then
+			pasteBox.EditBox:SetText(text)
+			pasteBox.EditBox:HighlightText()
+		end
+		pasteHint:SetText(ExportHint())
+	end
 	return addImported
 end
 

@@ -19,6 +19,14 @@ local lastApplyFailed = false
 -- character's, not the profile's, so saving them would overwrite the profile.
 local loginApplyPending = false
 
+-- Checkbox changes for the selected profile, waiting for the next save like any other change.
+-- Kept for this session only, so a switch, /reload or logout without a save drops them.
+local pendingCategories
+
+local function AllCategoriesOn()
+	return { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
+end
+
 local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
@@ -94,8 +102,8 @@ function Profiles.Differences()
 	return ChatSettings.Diff(live, profile), live.duplicateTabNames
 end
 
-function Profiles.HasCategoryOn(profile)
-	for _, on in pairs(profile.categories) do
+function Profiles.HasCategoryOn(categories)
+	for _, on in pairs(categories) do
 		if on then
 			return true
 		end
@@ -103,38 +111,102 @@ function Profiles.HasCategoryOn(profile)
 	return false
 end
 
--- Saves the live settings into the selected profile. Runs at logout, on Save now, and before
--- switching profiles.
---
--- Saves even when nothing seems to differ. A category that was just turned on has no saved
--- data yet, so the comparison can't see its changes. Categories that are turned off are dropped,
--- so with every category off nothing is saved, rather than emptying the profile.
-function Profiles.SaveSelected()
+-- Returns the selected profile's categories as the checkboxes show them, including changes that
+-- aren't saved yet, or nil if this character uses no profile.
+function Profiles.Categories()
 	local _, profile = Profiles.Selected()
-	if not profile or lastApplyFailed or loginApplyPending or not Profiles.HasCategoryOn(profile) then
-		return
+	return profile and (pendingCategories or profile.categories)
+end
+
+-- Returns the categories whose checkbox differs from the saved profile, mapped to the new value.
+function Profiles.UnsavedCategoryChanges()
+	local _, profile = Profiles.Selected()
+	local changes = {}
+	if profile and pendingCategories then
+		for category, on in pairs(pendingCategories) do
+			if on ~= (profile.categories[category] == true) then
+				changes[category] = on
+			end
+		end
 	end
-	local live = ChatSettings.Read(profile.categories)
-	profile.windows = live.windows
-	profile.colors = live.colors
+	return changes
 end
 
 function Profiles.SetCategoryEnabled(category, enabled)
 	local _, profile = Profiles.Selected()
-	if profile then
-		profile.categories[category] = enabled
+	if not profile then
+		return
 	end
+	pendingCategories = pendingCategories or {}
+	for name, on in pairs(profile.categories) do
+		if pendingCategories[name] == nil then
+			pendingCategories[name] = on
+		end
+	end
+	pendingCategories[category] = enabled
 end
 
--- Saves into the selected profile, then applies the new one. Pass nil to use no profile.
--- Returns what did not apply, or nil and a reason if the switch can't happen now.
+-- Saves the live settings and any checkbox changes into the selected profile. Runs at logout and
+-- on Save now.
+--
+-- Saves even when nothing seems to differ. A category that was just turned on has no saved
+-- data yet, so the comparison can't see its changes. Categories that are turned off are dropped.
+-- With every category off nothing is saved, so the profile keeps its last saved selection.
+function Profiles.SaveSelected()
+	local _, profile = Profiles.Selected()
+	if not profile or lastApplyFailed or loginApplyPending then
+		return
+	end
+	local categories = pendingCategories or profile.categories
+	if not Profiles.HasCategoryOn(categories) then
+		return
+	end
+	local live = ChatSettings.Read(categories)
+	profile.categories = categories
+	profile.windows = live.windows
+	profile.colors = live.colors
+	pendingCategories = nil
+end
+
+-- Returns true if choosing profile `name` would replace settings that aren't saved anywhere:
+-- the live settings differ from that profile, and from every profile that saves at least the
+-- same categories.
+function Profiles.WouldLoseUnsavedSettings(name)
+	local target = db.profiles[name]
+	local function MatchesLive(profile)
+		return #ChatSettings.Diff(ChatSettings.Read(profile.categories), profile) == 0
+	end
+	local function SavesAllOf(profile, categories)
+		for category, on in pairs(categories) do
+			if on and not profile.categories[category] then
+				return false
+			end
+		end
+		return true
+	end
+
+	if MatchesLive(target) then
+		return false
+	end
+	for _, profile in pairs(db.profiles) do
+		if SavesAllOf(profile, target.categories) and MatchesLive(profile) then
+			return false
+		end
+	end
+	return true
+end
+
+-- Applies a profile. Pass nil to use no profile. Returns what did not apply, or nil and a reason
+-- if the switch can't happen now.
+--
+-- Unsaved changes are discarded, not saved into the old profile: switching away with Save now
+-- available means the player chose not to keep them, and the old profile stays as last saved.
 function Profiles.Select(name)
 	-- The game blocks some chat changes in combat, and a blocked change fails without an error.
 	if InCombatLockdown() then
 		return nil, "You can't switch profiles in combat."
 	end
-	-- Changes since the last save belong to the old profile, so save before switching.
-	Profiles.SaveSelected()
+	pendingCategories = nil
 	db.profileByCharacter[CharacterKey()] = name
 	if not name then
 		return {}
@@ -149,17 +221,18 @@ function Profiles.SaveAsNew(name)
 	if not newName then
 		return nil, reason
 	end
-	-- Start from the selected profile's categories, so one that was turned off on purpose stays off.
-	local _, selected = Profiles.Selected()
-	local categories = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
-	if selected and Profiles.HasCategoryOn(selected) then
-		for category, enabled in pairs(selected.categories) do
+	-- Start from the checkboxes as they are, so a category turned off on purpose stays off.
+	local categories = AllCategoriesOn()
+	local current = Profiles.Categories()
+	if current and Profiles.HasCategoryOn(current) then
+		for category, enabled in pairs(current) do
 			categories[category] = enabled
 		end
 	end
 	local live = ChatSettings.Read(categories)
 	db.profiles[newName] = { categories = categories, windows = live.windows, colors = live.colors }
 	db.profileByCharacter[CharacterKey()] = newName
+	pendingCategories = nil
 	-- The new profile is exactly the live setup, so nothing half-applied is left to protect.
 	lastApplyFailed = false
 	return newName
@@ -195,6 +268,9 @@ end
 
 -- Deletes a profile. Characters that used it keep their chat settings and use no profile.
 function Profiles.Delete(name)
+	if name == Profiles.Selected() then
+		pendingCategories = nil
+	end
 	db.profiles[name] = nil
 	for character, profileName in pairs(db.profileByCharacter) do
 		if profileName == name then
@@ -210,6 +286,13 @@ local function LoadSavedVariables()
 	db.schema = db.schema or 1
 	db.profiles = db.profiles or {}
 	db.profileByCharacter = db.profileByCharacter or {}
+	-- Version 0.1.1 saved checkbox changes straight away, so a profile could end up with every
+	-- category off, which saves and applies nothing. Its settings are still there.
+	for _, profile in pairs(db.profiles) do
+		if not Profiles.HasCategoryOn(profile.categories) then
+			profile.categories = AllCategoriesOn()
+		end
+	end
 end
 
 local events = CreateFrame("Frame")

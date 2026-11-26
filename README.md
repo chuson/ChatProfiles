@@ -16,12 +16,12 @@ Then restart the game or return to character select.
 Open the panel from Esc > Options > AddOns > ChatProfiles, or type `/chatprofiles` or `/chatp`.
 
 - **New** saves your current chat settings as a profile and switches this character to it.
-- **Choosing a profile** from the menu applies it to this character. Your current settings are saved to the old profile first. If the character isn't using a profile yet, you're asked before its settings are replaced.
+- **Choosing a profile** from the menu applies it to this character. If the character isn't using a profile and its settings don't match any of your profiles, you're asked first.
 - **Save now** saves without waiting for logout.
 - **Rename** and **Delete** do what they say. Characters using a deleted profile keep their chat settings.
 - **Export** gives you text to paste to another account or a friend, and **Import** adds a profile from that text.
 
-A profile is applied when you log in, and your chat settings are saved to it when you log out or `/reload`. The panel lists anything that differs from the profile.
+A profile is applied when you log in. Logging out or typing `/reload` always saves your chat settings to it, whether or not you clicked Save now. Switching to another profile is the only way to discard unsaved changes. The panel lists anything that differs from the profile.
 
 If some settings can't be applied, ChatProfiles stops saving for that character until you reload or log in again, so a half-applied setup never overwrites a profile other characters share. The panel shows what didn't apply.
 
