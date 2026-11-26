@@ -427,7 +427,9 @@ local function BuildSharingSection(anchor)
 		end
 		local text = ExportString.Export(profile)
 		if text ~= pasteBox.EditBox:GetText() then
+			-- Clicking Save now took focus from the box, and Ctrl+C only copies from a focused box.
 			pasteBox.EditBox:SetText(text)
+			pasteBox.EditBox:SetFocus()
 			pasteBox.EditBox:HighlightText()
 		end
 		pasteHint:SetText(ExportHint())
