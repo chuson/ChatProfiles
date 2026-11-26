@@ -6,7 +6,10 @@ ChatProfiles works on the standard chat window, using the same settings as the g
 
 ## Installing
 
-Copy the `ChatProfiles` folder into `World of Warcraft\_forever_\Interface\AddOns`, then restart the game or return to character select.
+- **WowUp:** choose "Install from URL" and paste this repository's link. WowUp keeps it up to date.
+- **By hand:** download the zip from the [latest release](../../releases/latest) and extract it into `World of Warcraft\_forever_\Interface\AddOns`.
+
+Then restart the game or return to character select.
 
 ## Using it
 
@@ -26,7 +29,7 @@ If some settings can't be applied, ChatProfiles stops saving for that character 
 
 You choose which parts each profile saves. At least one is required.
 
-- **Tabs:** which tabs you have, the position of undocked tabs, and whether each tab is locked.
+- **Tabs:** which tabs you have, their order, the position of undocked tabs, and whether each tab is locked.
 - **Message filters:** which messages and channels each tab shows.
 - **Font and background:** text size, background color, and background opacity.
 - **Chat colors:** the color of each kind of message, and whether names use class colors.

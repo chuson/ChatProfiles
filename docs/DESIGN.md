@@ -94,7 +94,7 @@ Each profile stores which categories it manages (`categories`). A category that'
 
 | Category | Panel description | Default | Notes |
 | --- | --- | --- | --- |
-| Tabs | Which tabs you have, the position of undocked tabs, and whether each tab is locked | on | Off: apply never creates, closes, docks or moves tabs. |
+| Tabs | Which tabs you have, their order, the position of undocked tabs, and whether each tab is locked | on | Off: apply never creates, closes, docks, reorders or moves tabs. |
 | Message filters (`messagesAndChannels`) | Which messages and channels each tab shows | on | The Combat Log's groups and channels are never touched. |
 | Font and background | Text size, background color, and background opacity | on | |
 | Chat colors | The color of each kind of message | on | Includes class-colored names. Stored per character (open question 10). Channel colors follow local channel numbers (section 9). |
@@ -197,7 +197,7 @@ whispers: undocked instead of docked
 
 Saved in this profile
 [x] Tabs
-    Which tabs you have, the position of undocked tabs, and whether each tab is locked
+    Which tabs you have, their order, the position of undocked tabs, and whether each tab is locked
 [x] Message filters
     Which messages and channels each tab shows
 [x] Font and background

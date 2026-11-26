@@ -10,7 +10,7 @@ local CATEGORIES = {
 	{
 		key = "tabs",
 		label = "Tabs",
-		description = "Which tabs you have, the position of undocked tabs, and whether each tab is locked",
+		description = "Which tabs you have, their order, the position of undocked tabs, and whether each tab is locked",
 	},
 	{
 		key = "messagesAndChannels",

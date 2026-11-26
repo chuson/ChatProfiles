@@ -56,6 +56,10 @@ read_globals = {
 files["tests/ExportString.lua"] = {
 	globals = { "Constants", "ChatTypeInfo", "C_EncodingUtil" },
 }
+-- The recording converter runs outside the game, with its command-line arguments in `arg`.
+files["tests/record-fixture.lua"] = {
+	read_globals = { "arg" },
+}
 files["tests/ChatSettings.lua"] = {
 	globals = {
 		"Constants",

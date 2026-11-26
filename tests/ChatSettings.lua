@@ -633,13 +633,13 @@ local function IsSorted(list)
 end
 
 -- In the recording, General, party and trade are docked in that order, and Combat Log and
--- whispers float on their own. Floating tabs come after docked ones, by window number.
+-- whispers are undocked. Undocked tabs come after docked ones, by window number.
 local RECORDED_KEYS = { "window:1", "name:party", "name:trade", "window:2", "name:whispers" }
 
 UseRecording()
 local live = Read(ALL_CATEGORIES)
 
-Equal(Keys(live.windows), RECORDED_KEYS, "Read didn't return the docked tabs in dock order, then the floating ones")
+Equal(Keys(live.windows), RECORDED_KEYS, "Read didn't return the docked tabs in dock order, then the undocked ones")
 Equal(
 	live.windowNumbers,
 	{ ["window:1"] = 1, ["window:2"] = 2, ["name:party"] = 4, ["name:trade"] = 5, ["name:whispers"] = 6 },
