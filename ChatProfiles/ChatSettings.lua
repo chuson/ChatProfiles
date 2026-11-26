@@ -12,15 +12,6 @@ local GENERAL_WINDOW = 1
 local COMBAT_LOG_WINDOW = 2
 local MAX_WINDOWS = Constants.ChatFrameConstants.MaxChatWindows
 
--- The client stores colors as 0-255, so values read back are rounded.
-local function NearlyEqual(x, y)
-	return math.abs(x - y) < 0.01
-end
-
-local function SameColor(have, want)
-	return NearlyEqual(have.r, want.r) and NearlyEqual(have.g, want.g) and NearlyEqual(have.b, want.b)
-end
-
 local function ReadChannels(windowNumber)
 	local channels = {}
 	-- Returns name1, id1, name2, id2, ...
@@ -52,9 +43,11 @@ end
 local function ReadWindow(windowNumber, key, categories)
 	local name, fontSize, r, g, b, a, _, locked = GetChatWindowInfo(windowNumber)
 	local window = { key = key, name = name }
+	if categories.tabs then
+		window.locked = locked and true or false -- the API returns 1 or nil
+	end
 	if categories.fontAndBackground then
 		window.fontSize, window.r, window.g, window.b, window.a = fontSize, r, g, b, a
-		window.locked = locked and true or false -- the API returns 1 or nil
 	end
 	-- The combat log uses its own filters, not message groups. Both lists are sorted, so an
 	-- unchanged setup saves and exports the same way every time.
@@ -122,7 +115,9 @@ local function ChatTypeName(chatType)
 end
 
 -- Zone channels (General, Trade) have localized names, so they're matched by ID.
--- Custom channels have no ID, so they're matched by name.
+-- Custom channels have no ID, so they're matched by name, ignoring case. The game treats
+-- "cpTEST" and "Cptest" as one channel and reports it with the case this character joined
+-- with, so a case-sensitive match would never settle. Saved names keep their case.
 local function ChannelKey(channel)
 	if channel.zoneChannelID > 0 then
 		return channel.zoneChannelID
@@ -162,92 +157,76 @@ local function SetDifference(have, want, keyOf)
 	return missing, extra
 end
 
+-- The client stores colors as 0-255, so values read back are rounded.
+local function NearlyEqual(x, y)
+	return math.abs(x - y) < 0.01
+end
+
+local function SameColor(have, want)
+	return NearlyEqual(have.r, want.r) and NearlyEqual(have.g, want.g) and NearlyEqual(have.b, want.b)
+end
+
 -- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means the
 -- character never picked one.
-local FONT_AND_BACKGROUND = {
-	{
-		label = "different font size",
-		differs = function(have, want)
-			return want.fontSize ~= nil and want.fontSize > 0 and have.fontSize ~= want.fontSize
-		end,
-		apply = function(frame, want)
-			-- The first argument is Blizzard's menu button; it's only read when the size is nil.
-			FCF_SetChatWindowFontSize(nil, frame, want.fontSize)
-		end,
-	},
-	{
-		label = "different background color",
-		differs = function(have, want)
-			return want.r ~= nil and not SameColor(have, want)
-		end,
-		apply = function(frame, want)
-			FCF_SetWindowColor(frame, want.r, want.g, want.b)
-		end,
-	},
-	{
-		label = "different background opacity",
-		differs = function(have, want)
-			return want.a ~= nil and not NearlyEqual(have.a, want.a)
-		end,
-		apply = function(frame, want)
-			FCF_SetWindowAlpha(frame, want.a)
-		end,
-	},
-	{
-		label = "locked differently",
-		differs = function(have, want)
-			return want.locked ~= nil and have.locked ~= want.locked
-		end,
-		apply = function(frame, want)
-			FCF_SetLocked(frame, want.locked)
-		end,
-	},
-}
-
 local function DiffWindow(frame, have, want, categories, addDifference)
-	if categories.fontAndBackground then
-		for _, setting in ipairs(FONT_AND_BACKGROUND) do
-			if setting.differs(have, want) then
-				addDifference(have.name .. ": " .. setting.label, function()
-					setting.apply(frame, want)
-				end)
-			end
-		end
+	local function Add(text, apply)
+		addDifference(have.name .. ": " .. text, apply)
 	end
 
-	if not categories.messagesAndChannels then
-		return
+	if categories.tabs and want.locked ~= nil and have.locked ~= want.locked then
+		Add("locked differently", function()
+			FCF_SetLocked(frame, want.locked)
+		end)
+	end
+
+	if categories.fontAndBackground then
+		if want.fontSize ~= nil and want.fontSize > 0 and have.fontSize ~= want.fontSize then
+			Add("different font size", function()
+				-- The first argument is Blizzard's menu button; it's only read when the size is nil.
+				FCF_SetChatWindowFontSize(nil, frame, want.fontSize)
+			end)
+		end
+		if want.r ~= nil and not SameColor(have, want) then
+			Add("different background color", function()
+				FCF_SetWindowColor(frame, want.r, want.g, want.b)
+			end)
+		end
+		if want.a ~= nil and not NearlyEqual(have.a, want.a) then
+			Add("different background opacity", function()
+				FCF_SetWindowAlpha(frame, want.a)
+			end)
+		end
 	end
 
 	-- Either side may have no message groups or channels: the combat log never does, and
 	-- neither does a profile saved while this category was off.
-	if want.messageGroups and have.messageGroups then
+	if categories.messagesAndChannels and want.messageGroups and have.messageGroups then
 		local missing, extra = SetDifference(have.messageGroups, want.messageGroups, function(group)
 			return group
 		end)
 		for _, group in ipairs(missing) do
-			addDifference(have.name .. ": doesn't show " .. ChatTypeName(group) .. " messages", function()
+			Add("doesn't show " .. ChatTypeName(group) .. " messages", function()
 				frame:AddMessageGroup(group)
 			end)
 		end
 		for _, group in ipairs(extra) do
-			addDifference(have.name .. ": also shows " .. ChatTypeName(group) .. " messages", function()
+			Add("also shows " .. ChatTypeName(group) .. " messages", function()
 				frame:RemoveMessageGroup(group)
 			end)
 		end
 	end
 
-	if want.channels and have.channels then
+	if categories.messagesAndChannels and want.channels and have.channels then
 		local missing, extra = SetDifference(have.channels, want.channels, ChannelKey)
 		for _, channel in ipairs(missing) do
 			local name = ClientChannelName(channel)
-			addDifference(have.name .. ": doesn't show the " .. name .. " channel", function()
+			Add("doesn't show the " .. name .. " channel", function()
 				frame:AddChannel(name)
 			end)
 		end
 		-- The live name is already in this client's language.
 		for _, channel in ipairs(extra) do
-			addDifference(have.name .. ": also shows the " .. channel.name .. " channel", function()
+			Add("also shows the " .. channel.name .. " channel", function()
 				frame:RemoveChannel(channel.name)
 			end)
 		end

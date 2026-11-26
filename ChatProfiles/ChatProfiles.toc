@@ -1,5 +1,5 @@
 ## Interface: 16001
-## Title: Chat Profiles
+## Title: ChatProfiles
 ## Notes: Share your chat tabs, channels and colors between characters.
 ## Version: 0.1.0
 ## SavedVariables: ChatProfilesDB

@@ -34,7 +34,7 @@ end
 
 local function CheckNewName(name)
 	name = TrimSpaces(name or "")
-	-- Count letters, as the Name box does. # counts bytes, and a letter outside English takes several.
+	-- Count letters, as the name popup's limit does. # counts bytes, and a letter outside English takes several.
 	local letters = strlenutf8(name)
 	local limit = Profiles.MAX_PROFILE_NAME_LENGTH
 	if letters == 0 then
@@ -158,6 +158,10 @@ function Profiles.AddImported(name, profile)
 end
 
 function Profiles.Rename(oldName, name)
+	-- The name check below would reject the unchanged name as one that's already taken.
+	if name == oldName then
+		return oldName
+	end
 	local newName, reason = CheckNewName(name)
 	if not newName then
 		return nil, reason
@@ -198,13 +202,13 @@ local function ApplyAtLogin()
 	local remaining, firstError = Apply(profile)
 	if #remaining > 0 then
 		print(
-			'Chat Profiles: Some settings from "'
+			'ChatProfiles: Some settings from "'
 				.. name
 				.. "\" couldn't be applied, so changes won't be saved until you reload or log in again."
 				.. " Type /chatprofiles for details."
 		)
 		if firstError then
-			print("Chat Profiles: The first error was: " .. tostring(firstError))
+			print("ChatProfiles: The first error was: " .. tostring(firstError))
 		end
 	end
 end

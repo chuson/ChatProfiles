@@ -5,7 +5,9 @@ max_line_length = 120
 globals = {
 	"ChatProfilesDB",
 	"SLASH_CHATPROFILES1",
+	"SLASH_CHATPROFILES2",
 	"SlashCmdList",
+	"StaticPopupDialogs",
 }
 
 -- Game APIs in use. Check each new one against Blizzard's UI source and in game first
@@ -28,8 +30,11 @@ read_globals = {
 	"GetChatWindowInfo",
 	"GetChatWindowMessages",
 	"GetNormalizedRealmName",
+	"RED_FONT_COLOR",
 	"SetChatColorNameByClass",
 	"Settings",
+	"StaticPopup_Show",
+	"UIErrorsFrame",
 	"UnitName",
 	"strlenutf8",
 }

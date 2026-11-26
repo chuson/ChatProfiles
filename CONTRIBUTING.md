@@ -1,6 +1,6 @@
-# Contributing to Chat Profiles
+# Contributing to ChatProfiles
 
-Thanks for helping out. Chat Profiles is small on purpose, so most changes are a few lines in one file. This page covers how to get set up, how the code is organized, and what to check before you send a change.
+Thanks for helping out. ChatProfiles is small on purpose, so most changes are a few lines in one file. This page covers how to get set up, how the code is organized, and what to check before you send a change.
 
 If you're changing how the addon behaves, read `Chat Profiles Design Doc.md` first. It explains what the addon does and why.
 

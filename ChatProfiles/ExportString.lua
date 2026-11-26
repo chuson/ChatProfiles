@@ -138,6 +138,7 @@ local function CleanWindow(window, what)
 		clean.key = window.key
 	else
 		Check(type(window.key) == "string" and window.key:sub(1, 5) == "name:", what .. " has an invalid key")
+		-- Rebuilt from the name, so a hand-edited key can't disagree with it.
 		clean.key = "name:" .. clean.name
 	end
 
@@ -251,14 +252,14 @@ end
 -- Returns a profile, or nil and a reason to show the user.
 function ExportString.Import(text)
 	if #text > MAX_PASTE_LENGTH then
-		return nil, "the text is too long to be a Chat Profiles export"
+		return nil, "the text is too long to be a ChatProfiles export"
 	end
 	-- Forums and chat apps can wrap a long line or add spaces. Base64 never contains either.
 	text = text:gsub("%s", "")
 	if text == "" then
 		return nil, "the box is empty"
 	elseif text:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then
-		return nil, "that isn't a Chat Profiles export"
+		return nil, "that isn't a ChatProfiles export"
 	end
 
 	-- Both decoders raise errors on bad input instead of returning nil.
