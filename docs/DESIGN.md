@@ -79,7 +79,7 @@ A window entry holds:
 The list holds tabs, but it's called `windows` because that's the client's word. Docked tabs come first, in dock order, then undocked tabs by window number, so a tab's place in the list gives its place in the dock. A field added later needs no migration, because an older profile that lacks it leaves that setting alone; a profile saved before `docked` existed leaves every tab where it is. A profile's `colors` maps each `ChatTypeInfo` key to `r`, `g`, `b` and `classColoredNames`.
 
 - Profiles are keyed by name. The `profileByCharacter` table is account-wide, so rename updates every reference in one loop, and delete detaches the characters that used the profile.
-- Character keys are `UnitName("player") .. "-" .. GetNormalizedRealmName()`. On Forever the realm name is empty, so keys look like `"Joe-"` (section 9).
+- Character keys are `UnitName("player") .. "-" .. GetNormalizedRealmName()`. On Forever the realm name is empty, so keys look like `"Name-"`. Forever character names are unique across the game, so the empty realm can't cause a collision. Other game versions get the usual `"Name-Realm"`, and each version keeps its own saved variables, so keys from different versions never meet.
 - A profile holds only its current setup: no version number and no history. Whether a character is in sync is answered by comparing its live chat with the profile.
 - A renamed or transferred character looks unassigned under its new key. This is harmless: the player selects a profile again.
 - Saved variables are initialized in `ADDON_LOADED` for ChatProfiles (they aren't available at file scope), and the event is then unregistered. `schema` is stored so a later format change can be detected, but no migration code is written until a second schema exists. The table is assigned to the global `ChatProfilesDB`, not only to a local, or the client has nothing to write. Chat state is never read at this point: on a fresh login it still predates the client's settings download (open question 1).
@@ -236,7 +236,7 @@ Behavior:
 - With every window slot in use, `FCF_OpenNewWindow` creates nothing, and the missing tab stays in the remaining differences.
 - Closing a tab discards its scrollback, including history restored by another addon. It only happens with Tabs on, when the profile lacks the tab.
 - Channel colors are stored per channel number (`CHANNEL1` to `CHANNEL20`), and two characters may number the same channel differently, for example when one has joined an extra channel. The color then lands on whichever channel holds that number. Accepted.
-- Character keys include an empty realm name on Forever. If Forever ever has more than one realm, two characters with the same name would share a key and a profile assignment.
+- A custom channel shown in a tab may not stick on a character that hasn't joined it. If it doesn't, the difference stays, the apply counts as failed, and that character stops saving. Untested; on the later list.
 - Another addon that rebuilds chat at login would conflict with ChatProfiles on every login. Mitigation: turn off the category that addon manages.
 
 ## 10. Open questions
@@ -265,7 +265,6 @@ Answers come from Blizzard's 12.1.5 UI source (section 12), in-game checks, a te
 **Undecided**
 
 - Whether to save the Combat Log's message groups (open question 14).
-- What to do about the empty realm name in character keys (section 9).
 
 ## 11. Build and test plan
 
@@ -276,7 +275,7 @@ Answers come from Blizzard's 12.1.5 UI source (section 12), in-game checks, a te
 5. **Automated tests.** `lua tests/run.lua` runs one file per module (`tests/ExportString.lua`, `tests/ChatSettings.lua`). They cover reading pasted text, exporting, every import check from both sides of each limit, what `Diff` reports and the game calls each change makes, and `Read` against a recording of a real client. CONTRIBUTING explains how to record a new one.
 6. **Live tests.** Change a tab on a character that uses a profile, log out, log in, and confirm the profile holds it. Repeat with `/reload`. Log into a second character using the same profile and confirm it matches. Switch profiles and confirm the old one kept the changes. Undock a tab, save, switch to a profile with it docked and back, and confirm it returns to its position with its tab on the window. Then: apply on a fresh character and confirm no differences remain, rename and delete a tab on one character and confirm both carry to a second, and apply with every window slot in use.
 7. **Compatibility.** With Leatrix Plus "Restore chat messages" on: `/reload` with nothing to apply and confirm history survives in every tab, then apply a profile that changes groups and one that adds a tab, and confirm the existing tabs keep their history. Also confirm Save now updates the status line and Export at once.
-8. **Later.** A default profile for new characters, reordering docked tabs, and the Combat Log's message groups.
+8. **Later.** A default profile for new characters, and handling custom channels a character hasn't joined (section 9).
 
 ## 12. References
 
