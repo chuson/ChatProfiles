@@ -1,77 +1,50 @@
-# Contributing to ChatProfiles
+# Contributing
 
-Thanks for helping out. ChatProfiles is small on purpose, so most changes are a few lines in one file. This page covers how to get set up, how the code is organized, and what to check before you send a change.
+ChatProfiles rewrites a player's chat every time they log in, so a broken change is very disruptive. Test every change well, both with the tests and in game. `ChatProfiles Design Doc.md` explains how the addon works and why.
 
-If you're changing how the addon behaves, read `Chat Profiles Design Doc.md` first. It explains what the addon does and why.
+## Setup
 
-## Getting set up
+- Copy or link `ChatProfiles/` into your WoW Forever `Interface\AddOns` folder.
+- In VS Code, install the recommended extensions (Lua language server, Ketho's WoW API, StyLua). They catch unknown APIs and format on save.
+- Install Lua 5.1 or later to run the tests. GitHub also runs them, with luacheck, on every push and pull request.
 
-1. Copy or link the `ChatProfiles/` folder into your WoW Forever `Interface\AddOns` folder.
-2. Open the repository in [VS Code](https://code.visualstudio.com/) and install the recommended extensions when it asks: the Lua language server, Ketho's WoW API, and StyLua. Together they flag unknown APIs and wrong arguments as you type, and format your code.
-3. Optionally, install [Lua](https://www.lua.org/) 5.1 or later to run the tests yourself. GitHub runs them on every push and pull request either way.
-
-## How the project is laid out
-
-- `ChatProfiles/` is the addon itself, and the only folder that ships.
-- `tests/` has tests that run outside the game.
-- `.github/workflows/` runs luacheck and the tests on every push and pull request.
-
-Each file in `ChatProfiles/` has one job:
+## Layout
 
 | File | Does | Never |
 | --- | --- | --- |
 | `ChatSettings.lua` | Reads the live chat settings, compares them with a profile, applies a profile. | Prints, or touches saved data. |
-| `ExportString.lua` | Builds export strings and checks imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the tests can stand in for them outside the game. |
+| `ExportString.lua` | Builds export strings and checks imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the tests can stand in for them. |
 | `Profiles.lua` | Owns the saved data (`ChatProfilesDB`), the login apply and the logout save. | Builds UI. |
-| `OptionsPanel.lua` | The options panel and `/chatprofiles`. | Changes chat settings or saved data itself; it goes through `Profiles`. |
+| `OptionsPanel.lua` | The options panel and slash commands. | Changes chat settings or saved data itself; it goes through `Profiles`. |
 
-Each file only uses the ones above it: `Profiles` uses `ChatSettings`, and `OptionsPanel` uses `Profiles` and `ExportString`.
+Each file only uses the ones above it.
 
-## Chat terms
+WoW uses three words for chat windows, and the code keeps them apart: a **tab** is what the player sees and names, a **window** is a numbered slot from 1 to 10 (the `GetChatWindow*` functions), and a **frame** is the `ChatFrameN` object (the `FCF_*` functions and frame methods). Profiles store tabs in a list called `windows`, after the client's functions.
 
-WoW's own code uses three words for chat windows, and we keep them apart:
+## Code
 
-- A **tab** is what the player sees and names, like "General" or "Trade".
-- A **window** is one of the numbered slots behind the tabs, from 1 to 10. The `GetChatWindow*` functions take a window number.
-- A **frame** is the UI object for a window, `ChatFrame1` to `ChatFrame10`. You pass it to the `FCF_*` functions and call methods like `frame:AddChannel` on it.
-
-One exception: a profile stores its tabs in a list called `windows`, because that's the word the client's chat functions use.
-
-## Code style
-
-- Format with StyLua (`stylua.toml`). The recommended extension does it for you. luacheck (`.luacheckrc`) runs on GitHub.
-- Indent with tabs. Name module functions in PascalCase (`ChatSettings.Read`), locals in camelCase, and constants in UPPER_CASE.
-- Comments explain why, not what. Most lines don't need one. Do comment game behavior that a reader couldn't guess.
-- Check inputs where they enter the addon (imports, game API results), not between our own functions.
-- Keep it plain: no libraries, no `OnUpdate` polling, and no hooks on Blizzard functions.
-
-## Using game APIs
-
-The client is WoW Forever (interface 16001), which is closest to retail 12.1.5. APIs change between versions, so before using a new API:
-
-1. Find the API in [Blizzard's UI source](https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns), and make sure it isn't just a deprecated alias.
-2. Confirm the client has the API. Print its name in game, for example `/run print(C_Timer.NewTimer)`. Anything other than `nil` means it exists. Events and UI templates can't be printed, so try those in game instead.
-3. Add the API's global name to `read_globals` in `.luacheckrc`.
-
-Use frame methods (`frame:AddMessageGroup`) rather than the old `ChatFrame_*` globals. Those only exist while the `loadDeprecationFallbacks` setting is on.
+- Format with StyLua. Tabs for indentation, PascalCase for module functions, camelCase for locals, UPPER_CASE for constants.
+- Comment only what the code can't say, usually game behavior a reader couldn't guess.
+- Check data where it enters the addon (imports, game API results), not between our own functions.
+- No libraries, no `OnUpdate` polling, no hooks on Blizzard functions.
+- The client is interface 16001, closest to retail 12.1.5. Before using a new API, find it in [Blizzard's UI source](https://github.com/Gethe/wow-ui-source/tree/live/Interface/AddOns), check it exists in game with `/run print(TheFunction)`, and add it to `read_globals` in `.luacheckrc`. Use frame methods, not the old `ChatFrame_*` globals.
 
 ## Testing
 
-Run `lua tests/run.lua` from the repository root. There's one test file per module, using the helpers in `tests/helpers.lua`:
+Run `lua tests/run.lua` from the repository root.
 
-- `tests/ExportString.lua` checks reading pasted text, exporting, and the import validator against good and malformed profiles.
-- `tests/ChatSettings.lua` checks `ChatSettings.Diff`: which differences it reports, in what order, and which game calls each one makes when applied. It also checks `ChatSettings.Read` against a recording of a real client in `tests/fixtures/ChatRecording.lua`.
+- `tests/ExportString.lua` covers reading pasted text, exporting, and the import checks.
+- `tests/ChatSettings.lua` covers what `Diff` reports and the game calls each change makes, and checks `Read` against a recording of a real client.
 
-A test that expects a rejection also checks the reason, so it can't pass because a different check caught the profile. When you add a limit, test both sides of it.
+A rejection test also checks the reason, and every limit is tested from both sides.
 
-Applying a profile, profile management and the panel need the game. Section 11 of the design doc has the steps.
+Applying a profile, switching profiles and the panel can only be tested in game. Before sending a change, try it with a `/reload`, a full logout and login, and a switch to another profile and back. Section 11 of the design doc lists the full checks.
 
 ### Recording the chat client
 
-The Read tests replay what the game's chat functions returned on a real character. Record a new one after a client patch, or to cover a chat layout the current recording doesn't have:
+The `Read` tests replay what the game returned on a real character, in `tests/fixtures/ChatRecording.lua`. Record a new one after a client patch, or to cover a layout the current one doesn't have. The most useful layout has a docked tab that isn't selected, a locked and an unlocked undocked tab, a tab that was undocked and docked again, and a mix of zone and custom channels.
 
-1. In game, set up the tabs you want recorded. The most useful cases are a docked tab that isn't selected, a locked and an unlocked undocked tab, a tab that was undocked and docked again, a closed tab, and a mix of zone and custom channels.
-2. Run these three commands. The first records windows 1 to 10, the second records every chat color, and the third records each window's saved position and size:
+1. In game, run these three commands:
 
    ```
    /run local t={}for w=1,10 do t[w]={i={GetChatWindowInfo(w)},m={GetChatWindowMessages(w)},c={GetChatWindowChannels(w)}}end t.reserved=C_ChatInfo.GetNumReservedChatWindows() ChatProfilesDB.capture=t
@@ -85,36 +58,12 @@ The Read tests replay what the game's chat functions returned on a real characte
    /run for w=1,10 do local t=ChatProfilesDB.capture[w] t.p={GetChatWindowSavedPosition(w)} t.s={GetChatWindowSavedDimensions(w)} end
    ```
 
-3. Type `/reload` so the game writes the saved variables, then run `lua tests/fixtures/convert.lua <path to WTF\Account\NAME\SavedVariables\ChatProfiles.lua>` from the repository root.
-4. Run the tests. Where they fail, decide whether the client changed or the test assumed too much, and update one or the other.
-5. Remove the recording from your saved variables with `/run ChatProfilesDB.capture=nil` and another `/reload`.
-
-## Reviewing a change
-
-Review one area at a time. A pass that looks at everything at once tends to stay at one level and miss the rest.
-
-1. **Architecture:** which file does what, which way the dependencies run, and who owns each piece of state.
-2. **Size:** functions that are too long or do several jobs, and helpers, tables or parameters that don't earn their place. Check how many places call each function: a helper used once usually belongs inline.
-3. **Order:** each file and function reads from top to bottom.
-4. **Naming:** one term for each idea, and names that match what the code does.
-5. **Comments:** needed, accurate, and written in plain sentences.
-6. **Correctness:** bugs, edge cases, and text that counts bytes where the player sees letters.
-7. **Efficiency:** wasted work in code that runs often.
+2. `/reload`, then run `lua tests/fixtures/convert.lua <path to WTF\Account\NAME\SavedVariables\ChatProfiles.lua>`.
+3. Run the tests. Where they fail, decide whether the client changed or the test assumed too much.
+4. Clear the recording with `/run ChatProfilesDB.capture=nil` and another `/reload`.
 
 ## Sending a change
 
-Before you open a pull request:
-
-- Format with StyLua, and run the tests if you have Lua. GitHub runs them and luacheck on your pull request too.
-- Try the change in game, including a `/reload` and a full logout, since saving happens at logout.
-- If the change affects behavior, update the design doc to match.
-- Keep each pull request to one change, and say in the description what you tested.
-
-## Reporting a bug
-
-Open an issue with:
-
-- What you did, what you expected, and what happened instead.
-- The client build, from `/run print(GetBuildInfo())`.
-- Any Lua error text. Turn error popups on with `/console scriptErrors 1` if you don't see any.
-- The status lines from the `/chatprofiles` panel, if they're relevant.
+- Keep each pull request to one change, and say what you tested.
+- Review it one area at a time: architecture, size, order, naming, comments, correctness, efficiency.
+- If behavior changes, update the design doc to match.
