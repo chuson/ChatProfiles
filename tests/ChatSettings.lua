@@ -32,11 +32,25 @@ for windowNumber = 1, 10 do
 			Record(self.name .. ":" .. method, value)
 		end
 	end
+	frame.GetID = function()
+		return windowNumber
+	end
+	frame.GetName = function(self)
+		return self.name
+	end
 	_G[frame.name] = frame
+	_G[frame.name .. "Tab"] = { name = frame.name .. "Tab" }
 end
 local GAME_FUNCTIONS = {
 	"FCF_Close",
 	"FCF_OpenNewWindow",
+	"FCF_DockFrame",
+	"FCF_UnDockFrame",
+	"FCF_SetTabPosition",
+	"FCF_CheckShowChatFrame",
+	"FCF_RestorePositionAndDimensions",
+	"SetChatWindowSavedPosition",
+	"SetChatWindowSavedDimensions",
 	"FCF_SetLocked",
 	"FCF_SetChatWindowFontSize",
 	"FCF_SetWindowColor",
@@ -203,9 +217,94 @@ ExpectDiff(
 	{}
 )
 
+-- Dock state, position and size
+
+local UNDOCKED = { docked = false, point = "TOPLEFT", xOffset = 0.1, yOffset = -0.25, width = 430, height = 120 }
+
+ExpectDiff(
+	"an undocked tab the profile has docked",
+	Live({ General({ docked = true }), Tab("whispers", UNDOCKED) }),
+	Profile({ General({ docked = true }), Tab("whispers", { docked = true }) }),
+	{ "whispers: undocked instead of docked" },
+	{ "FCF_DockFrame ChatFrame4 2" }
+)
+ExpectDiff(
+	"docking a tab after other docked tabs",
+	Live({ General({ docked = true }), Tab("party", { docked = true }), Tab("whispers", UNDOCKED) }),
+	Profile({ General({ docked = true }), Tab("party", { docked = true }), Tab("whispers", { docked = true }) }),
+	{ "whispers: undocked instead of docked" },
+	{ "FCF_DockFrame ChatFrame5 3" }
+)
+ExpectDiff(
+	"a docked tab the profile has undocked",
+	Live({ General({ docked = true }), Tab("whispers", { docked = true }) }),
+	Profile({ General({ docked = true }), Tab("whispers", UNDOCKED) }),
+	{ "whispers: docked instead of undocked", "whispers: different position", "whispers: different size" },
+	{
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_SetTabPosition ChatFrame4 0",
+		"FCF_CheckShowChatFrame ChatFrame4",
+		"FCF_CheckShowChatFrame ChatFrame4Tab",
+		"SetChatWindowSavedPosition 4 TOPLEFT 0.1 -0.25",
+		"FCF_RestorePositionAndDimensions ChatFrame4",
+		"SetChatWindowSavedDimensions 4 430 120",
+		"FCF_RestorePositionAndDimensions ChatFrame4",
+	}
+)
+ExpectDiff(
+	"an undocked tab in a different position",
+	Live({ Tab("whispers", UNDOCKED) }),
+	Profile({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { xOffset = 0.2 })) }),
+	{ "whispers: different position" },
+	{ "SetChatWindowSavedPosition 4 TOPLEFT 0.2 -0.25", "FCF_RestorePositionAndDimensions ChatFrame4" }
+)
+ExpectDiff(
+	"an undocked tab in a different corner",
+	Live({ Tab("whispers", UNDOCKED) }),
+	Profile({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { point = "BOTTOMLEFT" })) }),
+	{ "whispers: different position" }
+)
+ExpectDiff(
+	"an undocked tab of a different size",
+	Live({ Tab("whispers", UNDOCKED) }),
+	Profile({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { height = 200 })) }),
+	{ "whispers: different size" },
+	{ "SetChatWindowSavedDimensions 4 430 200", "FCF_RestorePositionAndDimensions ChatFrame4" }
+)
+ExpectDiff(
+	"a position and size within rounding of each other",
+	Live({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { xOffset = 0.1004, width = 429.99997 })) }),
+	Profile({ Tab("whispers", UNDOCKED) }),
+	{}
+)
+ExpectDiff(
+	"an undocked tab the profile has no position for",
+	Live({ Tab("whispers", { docked = true }) }),
+	Profile({ Tab("whispers", { docked = false }) }),
+	{ "whispers: docked instead of undocked" }
+)
+ExpectDiff(
+	"a profile saved before dock state was stored",
+	Live({ General({ docked = true }), Tab("whispers", UNDOCKED) }),
+	Profile({ General(), Tab("whispers") }),
+	{}
+)
+ExpectDiff(
+	"a different dock state with Tabs off",
+	Live({ Tab("whispers", UNDOCKED) }),
+	Profile({ Tab("whispers", { docked = true }) }, nil, AllCategoriesExcept("tabs")),
+	{}
+)
+ExpectDiff(
+	"docking a tab that should also be locked",
+	Live({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { locked = false })) }),
+	Profile({ Tab("whispers", { docked = true, locked = true }) }),
+	{ "whispers: undocked instead of docked", "whispers: locked differently" }
+)
+
 -- Font and background
 
-local looks = { fontSize = 12, r = 0.5, g = 0, b = 0, a = 0.25 }
+local looks ={ fontSize = 12, r = 0.5, g = 0, b = 0, a = 0.25 }
 ExpectDiff(
 	"a different font size, background color and opacity",
 	Live({ General(looks) }),
@@ -384,5 +483,229 @@ ExpectDiff(
 	Profile({ General({ locked = true }), Tab("new") }, { SAY = { r = 1, g = 0, b = 0 } }),
 	{ 'Extra tab "old"', "General: locked differently", 'Missing tab "new"', "Different color for Say" }
 )
+
+-- Reading. The game's chat functions replay tests/fixtures/ChatRecording.lua, which was
+-- recorded from a real client, so Read is checked against what the game actually returns.
+
+helpers.LoadAddonFile("ChatProfiles/ExportString.lua", ns)
+local Read, Validate = ns.ChatSettings.Read, ns.ExportString.Validate
+local Unpack = helpers.Unpack
+
+local RECORDING = dofile("tests/fixtures/ChatRecording.lua")
+local recording
+
+function GetChatWindowInfo(windowNumber)
+	-- 10 values, some of them nil, so the length is given.
+	return Unpack(recording.windows[windowNumber].info, 1, 10)
+end
+function GetChatWindowMessages(windowNumber)
+	return Unpack(recording.windows[windowNumber].messageGroups)
+end
+function GetChatWindowChannels(windowNumber)
+	return Unpack(recording.windows[windowNumber].channels)
+end
+function GetChatWindowSavedPosition(windowNumber)
+	return Unpack(recording.windows[windowNumber].savedPosition or {})
+end
+function GetChatWindowSavedDimensions(windowNumber)
+	return Unpack(recording.windows[windowNumber].savedSize or {})
+end
+C_ChatInfo.GetNumReservedChatWindows = function()
+	return recording.reserved
+end
+
+-- Replays a copy of the recording, after `change` edits it.
+local function UseRecording(change)
+	recording = helpers.DeepCopy(RECORDING)
+	if change then
+		change(recording)
+	end
+	local entries = {}
+	for chatType, color in pairs(recording.colors) do
+		entries[chatType] = { r = color[1], g = color[2], b = color[3], colorNameByClass = color[4] }
+	end
+	ChatTypeInfo = helpers.ChatTypeInfoProxy(entries)
+end
+
+local function Keys(windows)
+	local keys = {}
+	for i, window in ipairs(windows) do
+		keys[i] = window.key
+	end
+	return keys
+end
+
+local function WindowWithKey(windows, key)
+	for _, window in ipairs(windows) do
+		if window.key == key then
+			return window
+		end
+	end
+end
+
+local function IsSorted(list)
+	for i = 2, #list do
+		if list[i - 1] > list[i] then
+			return false
+		end
+	end
+	return true
+end
+
+-- In the recording, General, party and trade are docked in that order, and Combat Log and
+-- whispers float on their own. Floating tabs come after docked ones, by window number.
+local RECORDED_KEYS = { "window:1", "name:party", "name:trade", "window:2", "name:whispers" }
+
+UseRecording()
+local live = Read(ALL_CATEGORIES)
+
+Equal(Keys(live.windows), RECORDED_KEYS, "Read didn't return the docked tabs in dock order, then the floating ones")
+Equal(
+	live.windowNumbers,
+	{ ["window:1"] = 1, ["window:2"] = 2, ["name:party"] = 4, ["name:trade"] = 5, ["name:whispers"] = 6 },
+	"Read returned the wrong window numbers"
+)
+Equal(live.duplicateTabNames, {}, "Read found duplicate tab names in a recording without any")
+
+Equal(WindowWithKey(live.windows, "name:party"), {
+	key = "name:party",
+	name = "party",
+	locked = true,
+	docked = true,
+	fontSize = 18,
+	r = 0,
+	g = 0,
+	b = 0,
+	a = 0.2470588386058807,
+	messageGroups = { "BN_WHISPER", "CHANNEL", "PARTY", "PARTY_LEADER", "WHISPER" },
+	channels = {},
+}, "a docked tab that isn't selected (shown = false) wasn't read correctly")
+
+local whispers = WindowWithKey(live.windows, "name:whispers")
+Equal(whispers.locked, false, "an unlocked undocked tab wasn't read as unlocked")
+Equal(whispers.docked, false, "an undocked tab wasn't read as undocked")
+Equal(WindowWithKey(live.windows, "window:2").docked, false, "the undocked Combat Log wasn't read as undocked")
+Equal(WindowWithKey(live.windows, "window:1").docked, true, "General wasn't read as docked")
+
+-- Undocked tabs store the saved position and size the client returned.
+local function PositionAndSize(window)
+	return { window.point, window.xOffset, window.yOffset, window.width, window.height }
+end
+local function Recorded(windowNumber)
+	local position, size = RECORDING.windows[windowNumber].savedPosition, RECORDING.windows[windowNumber].savedSize
+	return { position[1], position[2], position[3], size[1], size[2] }
+end
+Equal(PositionAndSize(whispers), Recorded(6), "an undocked tab's position or size wasn't read")
+Equal(
+	PositionAndSize(WindowWithKey(live.windows, "window:2")),
+	Recorded(2),
+	"the undocked Combat Log's position or size wasn't read"
+)
+
+-- trade was undocked and docked again, so the client still has a saved position and size for it.
+-- Docked tabs follow General, so neither is stored.
+local trade = WindowWithKey(live.windows, "name:trade")
+Check(RECORDING.windows[5].savedPosition ~= nil, "the recording no longer has a stale position for trade")
+Equal(PositionAndSize(trade), {}, "a docked tab's stale position or size was read")
+
+Equal(WindowWithKey(live.windows, "name:trade").channels, {
+	{ name = "General", zoneChannelID = 1 },
+	{ name = "LocalDefense", zoneChannelID = 22 },
+	{ name = "Services", zoneChannelID = 42 },
+	{ name = "Trade", zoneChannelID = 2 },
+	{ name = "TradeLocal", zoneChannelID = 46 },
+}, "zone channels weren't read as sorted name and ID pairs")
+
+local general = WindowWithKey(live.windows, "window:1")
+Equal(general.channels, {
+	{ name = "ChromieTime", zoneChannelID = 36 },
+	{ name = "NewcomerChat", zoneChannelID = 32 },
+	{ name = "OOC", zoneChannelID = 47 },
+	{ name = "ShadowlandsBetaDiscussion", zoneChannelID = 33 },
+	{ name = "ShadowlandsPTRDiscussion", zoneChannelID = 34 },
+	{ name = "WarWithinTestDiscussion", zoneChannelID = 35 },
+}, "General's channels weren't read as sorted name and ID pairs")
+Check(
+	#general.messageGroups == #RECORDING.windows[1].messageGroups and IsSorted(general.messageGroups),
+	"General's message groups weren't all read, or weren't sorted"
+)
+Equal(general.fontSize, 0, "a font size that was never set wasn't read as 0")
+
+-- The client does report message groups for the combat log, but Read leaves them out.
+local combatLog = WindowWithKey(live.windows, "window:2")
+Check(
+	combatLog.messageGroups == nil and combatLog.channels == nil,
+	"the combat log's message groups or channels were read"
+)
+
+local colorCount, recordedColorCount = 0, 0
+for _ in pairs(live.colors) do
+	colorCount = colorCount + 1
+end
+for _ in pairs(RECORDING.colors) do
+	recordedColorCount = recordedColorCount + 1
+end
+Equal(colorCount, recordedColorCount, "Read didn't find every chat color through the ChatTypeInfo proxy")
+Equal(live.colors.SAY, { r = 1, g = 1, b = 1, classColoredNames = false }, "Say's color wasn't read correctly")
+Equal(live.colors.BN_ALERT, { r = 1, g = 1, b = 1 }, "a chat type without name coloring reported the flag")
+
+-- Categories that are turned off
+
+UseRecording()
+local tabsOnly = Read({ tabs = true })
+Equal(
+	WindowWithKey(tabsOnly.windows, "name:party"),
+	{ key = "name:party", name = "party", locked = true, docked = true },
+	"Tabs alone read more than tabs"
+)
+Check(tabsOnly.colors == nil, "colors were read with Chat colors off")
+
+local looksOnly = Read({ fontAndBackground = true })
+Equal(WindowWithKey(looksOnly.windows, "name:party"), {
+	key = "name:party",
+	name = "party",
+	fontSize = 18,
+	r = 0,
+	g = 0,
+	b = 0,
+	a = 0.2470588386058807,
+}, "Font and background alone read the wrong fields")
+
+-- Cases the recording doesn't have, made by editing a copy. A closed window reports
+-- shown = false and docked = nil, as the unused windows do in the recording.
+
+UseRecording(function(r)
+	r.windows[6].info[1] = "trade"
+end)
+local duplicate = Read(ALL_CATEGORIES)
+Equal(
+	Keys(duplicate.windows),
+	{ "window:1", "name:party", "name:trade", "window:2" },
+	"a second tab named trade was read"
+)
+Equal(duplicate.duplicateTabNames, { "trade" }, "a duplicate tab name wasn't listed")
+Equal(duplicate.windowNumbers["name:trade"], 5, "the first tab named trade wasn't the one kept")
+
+UseRecording(function(r)
+	r.windows[3].info[9] = 6 -- the Voice tab is docked while voice transcription is on
+end)
+Equal(Keys(Read(ALL_CATEGORIES).windows), RECORDED_KEYS, "the Voice tab was read")
+
+UseRecording(function(r)
+	r.windows[7].info[1] = "old" -- a closed tab keeps its name, with shown = false and docked = nil
+end)
+Equal(Keys(Read(ALL_CATEGORIES).windows), RECORDED_KEYS, "a closed tab that kept its name was read")
+
+-- The whole path: settings read from the client match themselves and pass the import validator.
+
+UseRecording()
+local recorded = Read(ALL_CATEGORIES)
+local recordedProfile = { categories = ALL_CATEGORIES, windows = recorded.windows, colors = recorded.colors }
+Equal(Texts(Diff(Read(ALL_CATEGORIES), recordedProfile)), {}, "settings read from the client differ from themselves")
+local validated, reason = Validate(recordedProfile)
+Check(validated ~= nil, "settings read from the client fail the import validator: " .. tostring(reason))
+if validated then
+	Equal(validated, recordedProfile, "the import validator changed settings read from the client")
+end
 
 return helpers.Failures()

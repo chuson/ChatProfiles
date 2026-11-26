@@ -61,6 +61,25 @@ function helpers.Equal(actual, expected, message)
 	end
 end
 
+function helpers.DeepCopy(value)
+	if type(value) ~= "table" then
+		return value
+	end
+	local copy = {}
+	for key, item in pairs(value) do
+		copy[key] = helpers.DeepCopy(item)
+	end
+	return copy
+end
+
+-- unpack is a global in Lua 5.1 but table.unpack in 5.2 and later, and CI runs 5.1.
+function helpers.Unpack(list, first, last)
+	first, last = first or 1, last or #list
+	if first <= last then
+		return list[first], helpers.Unpack(list, first + 1, last)
+	end
+end
+
 -- Runs an addon file the way the client does: with the addon's name and a shared namespace.
 function helpers.LoadAddonFile(path, ns)
 	assert(loadfile(path))("ChatProfiles", ns)

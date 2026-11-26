@@ -7,7 +7,11 @@ local LEFT_MARGIN = 16
 local CONTENT_WIDTH = 600
 local MAX_DETAIL_LINES = 8
 local CATEGORIES = {
-	{ key = "tabs", label = "Tabs", description = "Which tabs you have, and whether each one is locked" },
+	{
+		key = "tabs",
+		label = "Tabs",
+		description = "Which tabs you have, the position of undocked tabs, and whether each tab is locked",
+	},
 	{
 		key = "messagesAndChannels",
 		label = "Message filters",

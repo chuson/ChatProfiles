@@ -160,6 +160,28 @@ if kept then
 	Equal(kept.windows[1].channels[2].name, HANGUL_SYLLABLE, "a channel name was changed on import")
 end
 
+-- Makes a tab undocked, with the position and size the client recorded for an undocked window.
+local function Undock(window)
+	window.docked = false
+	window.point, window.xOffset, window.yOffset = "TOPLEFT", 0.13828800618649, -0.25551301240921
+	window.width, window.height = 429.99996948242, 119.99989318848
+	return window
+end
+
+local undocked = Accepts("an undocked tab with a position and size", function(p)
+	Undock(p.windows[3])
+end)
+if undocked then
+	Equal(undocked.windows[3], Undock(GoodProfile().windows[3]), "an undocked tab changed on import")
+end
+Accepts("docked tabs", function(p)
+	p.windows[1].docked = true
+	p.windows[3].docked = true
+end)
+Accepts("an undocked Combat Log", function(p)
+	Undock(p.windows[2])
+end)
+
 -- Limits, from the accepted side
 
 Accepts("a name of exactly 200 bytes", function(p)
@@ -187,6 +209,14 @@ end)
 Accepts("colors and opacity of exactly 0 and 1", function(p)
 	p.windows[1].r, p.windows[1].g, p.windows[1].b, p.windows[1].a = 1, 0, 1, 0
 	p.windows[2].a = 1
+end)
+Accepts("position offsets of exactly -1 and 1", function(p)
+	Undock(p.windows[3])
+	p.windows[3].xOffset, p.windows[3].yOffset = 1, -1
+end)
+Accepts("a size of exactly 4096", function(p)
+	Undock(p.windows[3])
+	p.windows[3].width, p.windows[3].height = 4096, 4096
 end)
 Accepts("exactly 200 chat colors", function(p)
 	p.colors = {}
@@ -273,6 +303,46 @@ Rejects("a negative opacity", "tab 1 opacity must be between 0 and 1", function(
 end)
 Rejects("a lock that is not a boolean", "tab 1 lock must be true or false", function(p)
 	p.windows[1].locked = 1
+end)
+
+-- Rejected: dock state, position and size
+
+Rejects("a docked state that is not a boolean", "tab 1 docked state must be true or false", function(p)
+	p.windows[1].docked = 1
+end)
+Rejects("an undocked General", "tab 1 is General, which can't be undocked", function(p)
+	p.windows[1].docked = false
+end)
+Rejects("a position on a docked tab", "tab 3 has a position but isn't undocked", function(p)
+	Undock(p.windows[3]).docked = true
+end)
+Rejects("a position with no dock state", "tab 3 has a position but isn't undocked", function(p)
+	Undock(p.windows[3]).docked = nil
+end)
+Rejects("a corner that isn't one of the four", "tab 3 has an invalid position", function(p)
+	Undock(p.windows[3]).point = "CENTER"
+end)
+Rejects("an offset past the edge of the screen", "tab 3 has an invalid position", function(p)
+	Undock(p.windows[3]).xOffset = 1.5
+end)
+Rejects("an offset given as text", "tab 3 has an invalid position", function(p)
+	Undock(p.windows[3]).yOffset = "0"
+end)
+Rejects("only part of a position", "tab 3 has an invalid position", function(p)
+	Undock(p.windows[3]).point = nil
+end)
+Rejects("a size on a docked tab", "tab 3 has a size but isn't undocked", function(p)
+	local window = Undock(p.windows[3])
+	window.docked, window.point, window.xOffset, window.yOffset = true, nil, nil, nil
+end)
+Rejects("a width of 0", "tab 3 has an invalid size", function(p)
+	Undock(p.windows[3]).width = 0
+end)
+Rejects("a height of 4097", "tab 3 has an invalid size", function(p)
+	Undock(p.windows[3]).height = 4097
+end)
+Rejects("only part of a size", "tab 3 has an invalid size", function(p)
+	Undock(p.windows[3]).height = nil
 end)
 
 -- Rejected: tab and channel names

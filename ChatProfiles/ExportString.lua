@@ -14,6 +14,9 @@ local MAX_TEXT_BYTES = 200 -- a non-ASCII character can take up to 4 bytes
 local MAX_LIST_LENGTH = 100 -- message groups or channels in one tab
 local MAX_COLORS = 200
 local MIN_FONT_SIZE, MAX_FONT_SIZE = 6, 40
+local MAX_WINDOW_SIZE = 4096 -- in UI units, larger than any screen
+-- The corners FCF_SavePositionAndDimensions anchors an undocked tab to.
+local POSITION_POINTS = { TOPLEFT = true, TOPRIGHT = true, BOTTOMLEFT = true, BOTTOMRIGHT = true }
 
 local PROFILE_FIELDS = { categories = true, windows = true, colors = true }
 local CATEGORIES = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
@@ -26,6 +29,12 @@ local WINDOW_FIELDS = {
 	b = true,
 	a = true,
 	locked = true,
+	docked = true,
+	point = true,
+	xOffset = true,
+	yOffset = true,
+	width = true,
+	height = true,
 	messageGroups = true,
 	channels = true,
 }
@@ -77,6 +86,10 @@ end
 
 local function IsBetweenZeroAndOne(value)
 	return type(value) == "number" and value >= 0 and value <= 1
+end
+
+local function IsWindowLength(value)
+	return type(value) == "number" and value > 0 and value <= MAX_WINDOW_SIZE
 end
 
 local function CheckColor(t, what)
@@ -161,6 +174,27 @@ local function CleanWindow(window, what)
 
 	CheckBoolean(window.locked, what .. " lock")
 	clean.locked = window.locked
+
+	CheckBoolean(window.docked, what .. " docked state")
+	Check(not (clean.key == "window:1" and window.docked == false), what .. " is General, which can't be undocked")
+	clean.docked = window.docked
+
+	-- Offsets are fractions of the screen size, measured from the corner in `point`.
+	if window.point ~= nil or window.xOffset ~= nil or window.yOffset ~= nil then
+		Check(window.docked == false, what .. " has a position but isn't undocked")
+		local valid = POSITION_POINTS[window.point]
+			and type(window.xOffset) == "number"
+			and type(window.yOffset) == "number"
+			and math.abs(window.xOffset) <= 1
+			and math.abs(window.yOffset) <= 1
+		Check(valid, what .. " has an invalid position")
+		clean.point, clean.xOffset, clean.yOffset = window.point, window.xOffset, window.yOffset
+	end
+	if window.width ~= nil or window.height ~= nil then
+		Check(window.docked == false, what .. " has a size but isn't undocked")
+		Check(IsWindowLength(window.width) and IsWindowLength(window.height), what .. " has an invalid size")
+		clean.width, clean.height = window.width, window.height
+	end
 
 	if window.messageGroups ~= nil then
 		CheckList(window.messageGroups, MAX_LIST_LENGTH, what .. " message groups")

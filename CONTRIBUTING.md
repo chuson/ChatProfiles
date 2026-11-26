@@ -60,11 +60,34 @@ Use frame methods (`frame:AddMessageGroup`) rather than the old `ChatFrame_*` gl
 Run `lua tests/run.lua` from the repository root. There's one test file per module, using the helpers in `tests/helpers.lua`:
 
 - `tests/ExportString.lua` checks reading pasted text, exporting, and the import validator against good and malformed profiles.
-- `tests/ChatSettings.lua` checks `ChatSettings.Diff`: which differences it reports, in what order, and which game calls each one makes when applied.
+- `tests/ChatSettings.lua` checks `ChatSettings.Diff`: which differences it reports, in what order, and which game calls each one makes when applied. It also checks `ChatSettings.Read` against a recording of a real client in `tests/fixtures/ChatRecording.lua`.
 
 A test that expects a rejection also checks the reason, so it can't pass because a different check caught the profile. When you add a limit, test both sides of it.
 
-Reading live settings, applying a profile, profile management and the panel need the game. Section 11 of the design doc has the steps.
+Applying a profile, profile management and the panel need the game. Section 11 of the design doc has the steps.
+
+### Recording the chat client
+
+The Read tests replay what the game's chat functions returned on a real character. Record a new one after a client patch, or to cover a chat layout the current recording doesn't have:
+
+1. In game, set up the tabs you want recorded. The most useful cases are a docked tab that isn't selected, a locked and an unlocked undocked tab, a tab that was undocked and docked again, a closed tab, and a mix of zone and custom channels.
+2. Run these three commands. The first records windows 1 to 10, the second records every chat color, and the third records each window's saved position and size:
+
+   ```
+   /run local t={}for w=1,10 do t[w]={i={GetChatWindowInfo(w)},m={GetChatWindowMessages(w)},c={GetChatWindowChannels(w)}}end t.reserved=C_ChatInfo.GetNumReservedChatWindows() ChatProfilesDB.capture=t
+   ```
+
+   ```
+   /run local c={}for k,v in pairs(getmetatable(ChatTypeInfo).__index)do if v.r then c[k]={v.r,v.g,v.b,v.colorNameByClass}end end ChatProfilesDB.capture.colors=c
+   ```
+
+   ```
+   /run for w=1,10 do local t=ChatProfilesDB.capture[w] t.p={GetChatWindowSavedPosition(w)} t.s={GetChatWindowSavedDimensions(w)} end
+   ```
+
+3. Type `/reload` so the game writes the saved variables, then run `lua tests/fixtures/convert.lua <path to WTF\Account\NAME\SavedVariables\ChatProfiles.lua>` from the repository root.
+4. Run the tests. Where they fail, decide whether the client changed or the test assumed too much, and update one or the other.
+5. Remove the recording from your saved variables with `/run ChatProfilesDB.capture=nil` and another `/reload`.
 
 ## Reviewing a change
 

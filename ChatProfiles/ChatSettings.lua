@@ -26,10 +26,17 @@ local function ReadChannels(windowNumber)
 end
 
 local function ReadWindow(windowNumber, key, categories)
-	local name, fontSize, r, g, b, a, _, locked = GetChatWindowInfo(windowNumber)
+	local name, fontSize, r, g, b, a, _, locked, docked = GetChatWindowInfo(windowNumber)
 	local window = { key = key, name = name }
 	if categories.tabs then
-		window.locked = locked and true or false -- the API returns 1 or nil
+		window.locked = locked
+		window.docked = docked ~= nil
+		-- Docked tabs follow General. A tab keeps its saved position after it's docked again, so
+		-- only an undocked tab's position means anything.
+		if not docked then
+			window.point, window.xOffset, window.yOffset = GetChatWindowSavedPosition(windowNumber)
+			window.width, window.height = GetChatWindowSavedDimensions(windowNumber)
+		end
 	end
 	if categories.fontAndBackground then
 		window.fontSize, window.r, window.g, window.b, window.a = fontSize, r, g, b, a
@@ -91,8 +98,7 @@ function ChatSettings.Read(categories)
 		end
 	end
 
-	-- New tabs are added to the end of the dock, so creating them in dock order reproduces
-	-- the layout. Tabs that already exist can't be moved.
+	-- New tabs are added to the end of the dock, so creating them in dock order reproduces the layout.
 	table.sort(live.windows, function(x, y)
 		return dockOrder[x] < dockOrder[y]
 	end)
@@ -160,17 +166,61 @@ local function SameColor(have, want)
 	return NearlyEqual(have.r, want.r) and NearlyEqual(have.g, want.g) and NearlyEqual(have.b, want.b)
 end
 
+-- Saved positions are fractions of the screen size, and 0.001 is about a pixel or two.
+local function SamePosition(have, want)
+	return have.point == want.point
+		and math.abs(have.xOffset - want.xOffset) < 0.001
+		and math.abs(have.yOffset - want.yOffset) < 0.001
+end
+
+-- Saved sizes come back as fractions of a pixel off, e.g. 429.99997 for 430.
+local function SameSize(have, want)
+	return math.abs(have.width - want.width) < 0.5 and math.abs(have.height - want.height) < 0.5
+end
+
 -- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means it
--- was never set.
-local function DiffWindow(frame, have, want, categories, addDifference)
+-- was never set. `dockIndex` is where the tab goes if it has to be docked.
+local function DiffWindow(frame, have, want, categories, dockIndex, addDifference)
 	local function Add(text, apply)
 		addDifference(have.name .. ": " .. text, apply)
 	end
 
-	if categories.tabs and want.locked ~= nil and have.locked ~= want.locked then
-		Add("locked differently", function()
-			FCF_SetLocked(frame, want.locked)
-		end)
+	if categories.tabs then
+		if want.docked ~= nil and have.docked ~= want.docked then
+			if want.docked then
+				Add("undocked instead of docked", function()
+					FCF_DockFrame(frame, dockIndex)
+				end)
+			else
+				Add("docked instead of undocked", function()
+					-- FCF_UnDockFrame leaves the tab in the dock's tab bar, and a docked tab that
+					-- wasn't selected stays hidden. FCF_ToggleLock's unlock path fixes both this way.
+					FCF_UnDockFrame(frame)
+					FCF_SetTabPosition(frame, 0)
+					FCF_CheckShowChatFrame(frame)
+					FCF_CheckShowChatFrame(_G[frame:GetName() .. "Tab"])
+				end)
+			end
+		end
+		-- A tab that was just docked or undocked has no position read yet, so it counts as moved.
+		if want.docked == false and want.point and (not have.point or not SamePosition(have, want)) then
+			Add("different position", function()
+				SetChatWindowSavedPosition(frame:GetID(), want.point, want.xOffset, want.yOffset)
+				FCF_RestorePositionAndDimensions(frame)
+			end)
+		end
+		if want.docked == false and want.width and (not have.width or not SameSize(have, want)) then
+			Add("different size", function()
+				SetChatWindowSavedDimensions(frame:GetID(), want.width, want.height)
+				FCF_RestorePositionAndDimensions(frame)
+			end)
+		end
+		-- After the dock change, since docking a tab locks it.
+		if want.locked ~= nil and have.locked ~= want.locked then
+			Add("locked differently", function()
+				FCF_SetLocked(frame, want.locked)
+			end)
+		end
 	end
 
 	if categories.fontAndBackground then
@@ -267,12 +317,18 @@ function ChatSettings.Diff(live, profile)
 		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab })
 	end
 
-	local liveByKey, wanted = {}, {}
+	-- Profiles list their docked tabs first, in dock order, so counting them gives each one's
+	-- place in the dock. A profile saved before dock state was stored counts as all docked.
+	local liveByKey, wanted, dockIndex, dockedCount = {}, {}, {}, 0
 	for _, have in ipairs(live.windows) do
 		liveByKey[have.key] = have
 	end
 	for _, want in ipairs(profile.windows) do
 		wanted[want.key] = true
+		if want.docked ~= false then
+			dockedCount = dockedCount + 1
+			dockIndex[want.key] = dockedCount
+		end
 	end
 
 	-- Tabs are closed first: if every window is in use, a new tab can't open until one closes.
@@ -290,7 +346,8 @@ function ChatSettings.Diff(live, profile)
 	for _, want in ipairs(profile.windows) do
 		local have = liveByKey[want.key]
 		if have then
-			DiffWindow(_G["ChatFrame" .. live.windowNumbers[want.key]], have, want, categories, AddDifference)
+			local frame = _G["ChatFrame" .. live.windowNumbers[want.key]]
+			DiffWindow(frame, have, want, categories, dockIndex[want.key], AddDifference)
 		elseif categories.tabs and IsCustomKey(want.key) then
 			AddDifference('Missing tab "' .. want.name .. '"', function()
 				FCF_OpenNewWindow(want.name, true) -- noDefaultChannels; the second pass adds the profile's own
