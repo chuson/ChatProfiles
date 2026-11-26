@@ -25,21 +25,6 @@ local function ReadChannels(windowNumber)
 	return channels
 end
 
--- Once chat loads, the client moves every ChatTypeInfo entry into its metatable's __index and
--- empties the table itself. ChatTypeInfo.SAY still finds its entry, but pairs(ChatTypeInfo)
--- finds nothing, so loop over __index when it's there.
-local function ReadColors()
-	local metatable = getmetatable(ChatTypeInfo)
-	local chatTypes = metatable and type(metatable.__index) == "table" and metatable.__index or ChatTypeInfo
-	local colors = {}
-	for chatType, info in pairs(chatTypes) do
-		if info.r then
-			colors[chatType] = { r = info.r, g = info.g, b = info.b, classColoredNames = info.colorNameByClass }
-		end
-	end
-	return colors
-end
-
 local function ReadWindow(windowNumber, key, categories)
 	local name, fontSize, r, g, b, a, _, locked = GetChatWindowInfo(windowNumber)
 	local window = { key = key, name = name }
@@ -57,6 +42,20 @@ local function ReadWindow(windowNumber, key, categories)
 		window.channels = ReadChannels(windowNumber)
 	end
 	return window
+end
+
+-- ChatTypeInfo is an empty proxy once chat loads (see ChatFrameUtil.ImportAllListsToHash).
+-- The entries live in its metatable's __index, so pairs(ChatTypeInfo) finds nothing.
+local function ReadColors()
+	local metatable = getmetatable(ChatTypeInfo)
+	local chatTypes = metatable and type(metatable.__index) == "table" and metatable.__index or ChatTypeInfo
+	local colors = {}
+	for chatType, info in pairs(chatTypes) do
+		if info.r then
+			colors[chatType] = { r = info.r, g = info.g, b = info.b, classColoredNames = info.colorNameByClass }
+		end
+	end
+	return colors
 end
 
 -- Returns the live settings in the same shape as a profile, leaving out categories that are
@@ -104,20 +103,15 @@ function ChatSettings.Read(categories)
 	return live
 end
 
-local function IsCustomKey(key)
-	return key:sub(1, 5) == "name:"
-end
-
 -- Most chat types have a display name in the global strings, e.g. SAY = "Say".
 local function ChatTypeName(chatType)
 	local name = _G[chatType]
 	return type(name) == "string" and name or chatType
 end
 
--- Zone channels (General, Trade) have localized names, so they're matched by ID.
--- Custom channels have no ID, so they're matched by name, ignoring case. The game treats
--- "cpTEST" and "Cptest" as one channel and reports it with the case this character joined
--- with, so a case-sensitive match would never settle. Saved names keep their case.
+-- Zone channels (General, Trade) have localized names, so they're matched by ID. Custom
+-- channels are matched by name, case-insensitively: the game treats "cpTEST" and "Cptest" as
+-- one channel and reports the case each character joined with. Saved names keep their case.
 local function ChannelKey(channel)
 	if channel.zoneChannelID > 0 then
 		return channel.zoneChannelID
@@ -259,6 +253,10 @@ local function DiffColors(liveColors, profileColors, addDifference)
 	end
 end
 
+local function IsCustomKey(key)
+	return key:sub(1, 5) == "name:"
+end
+
 -- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
 -- says how the live settings differ from the profile, and `apply` makes them match. The panel
 -- shows the text, and Apply runs the same entries, so the two can't disagree.
@@ -266,7 +264,7 @@ function ChatSettings.Diff(live, profile)
 	local categories = profile.categories
 	local differences = {}
 	local function AddDifference(text, apply, opensOrClosesTab)
-		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab or false })
+		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab })
 	end
 
 	local liveByKey, wanted = {}, {}
@@ -295,8 +293,7 @@ function ChatSettings.Diff(live, profile)
 			DiffWindow(_G["ChatFrame" .. live.windowNumbers[want.key]], have, want, categories, AddDifference)
 		elseif categories.tabs and IsCustomKey(want.key) then
 			AddDifference('Missing tab "' .. want.name .. '"', function()
-				-- true skips the default channels; Apply's second pass adds the profile's own.
-				FCF_OpenNewWindow(want.name, true)
+				FCF_OpenNewWindow(want.name, true) -- noDefaultChannels; the second pass adds the profile's own
 			end, true)
 		end
 	end

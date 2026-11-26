@@ -9,7 +9,7 @@ ns.Profiles = Profiles
 
 Profiles.MAX_PROFILE_NAME_LENGTH = 50
 
-local db
+local db -- ChatProfilesDB, set when this addon's saved variables load
 
 -- Set when an apply leaves differences. Other characters share the profile, so a half-applied
 -- setup must never overwrite it. Saves are skipped until an apply succeeds.
@@ -19,8 +19,8 @@ local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
 
--- Removes spaces from both ends. %s only matches English spaces, so the non-breaking space and
--- the wide space that Chinese and Japanese keyboards type are removed separately.
+-- %s is ASCII-only, so U+00A0 (no-break space) and U+3000 (ideographic space, typed by CJK
+-- keyboards) are trimmed separately.
 local function TrimSpaces(text)
 	local before
 	repeat
@@ -34,15 +34,15 @@ end
 
 local function CheckNewName(name)
 	name = TrimSpaces(name or "")
-	-- Count letters, as the name popup's limit does. # counts bytes, and a letter outside English takes several.
-	local letters = strlenutf8(name)
+	-- strlenutf8 counts characters, matching the popup's SetMaxLetters. # would count bytes.
+	local characters = strlenutf8(name)
 	local limit = Profiles.MAX_PROFILE_NAME_LENGTH
-	if letters == 0 then
+	if characters == 0 then
 		return nil, "Give the profile a name first."
 	elseif name:find("[|%c]") then
-		-- "|" starts the client's color and link codes. "||" shows a single "|" in the message.
+		-- "|" starts the client's escape sequences (|c, |H, |T). The message writes "||" to show one "|".
 		return nil, "Names can't contain || or line breaks."
-	elseif letters > limit then
+	elseif characters > limit then
 		return nil, "That name is too long. Names can be up to " .. limit .. " characters."
 	elseif db.profiles[name] then
 		return nil, 'You already have a profile called "' .. name .. '".'
@@ -105,6 +105,13 @@ function Profiles.SaveSelected()
 	profile.colors = live.colors
 end
 
+function Profiles.SetCategoryEnabled(category, enabled)
+	local _, profile = Profiles.Selected()
+	if profile then
+		profile.categories[category] = enabled
+	end
+end
+
 -- Saves into the selected profile, then applies the new one. Pass nil to use no profile.
 -- Returns what did not apply.
 function Profiles.Select(name)
@@ -138,13 +145,6 @@ function Profiles.SaveAsNew(name)
 	-- The new profile is exactly the live setup, so nothing half-applied is left to protect.
 	lastApplyFailed = false
 	return newName
-end
-
-function Profiles.SetCategoryEnabled(category, enabled)
-	local _, profile = Profiles.Selected()
-	if profile then
-		profile.categories[category] = enabled
-	end
 end
 
 -- Adds an imported profile. It is not applied until a character selects it.
@@ -219,7 +219,7 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_LOGOUT")
 events:SetScript("OnEvent", function(self, event, loadedAddon)
 	if event == "ADDON_LOADED" then
-		-- This fires once for each addon. Our saved variables are ready when it fires for this one.
+		-- Saved variables are loaded by the time this fires for our own addon.
 		if loadedAddon == addonName then
 			LoadSavedVariables()
 			self:UnregisterEvent(event)

@@ -10,7 +10,7 @@ ns.ExportString = ExportString
 -- Exports are CBOR encoded as Base64, so they paste cleanly. Bump the number if the format changes.
 local EXPORT_PREFIX = "ChatProfiles1:"
 local MAX_PASTE_LENGTH = 64 * 1024 -- checked before decoding, so a huge paste can't stall the game
-local MAX_TEXT_BYTES = 200 -- a letter outside English can take up to 4 bytes
+local MAX_TEXT_BYTES = 200 -- a non-ASCII character can take up to 4 bytes
 local MAX_LIST_LENGTH = 100 -- message groups or channels in one tab
 local MAX_COLORS = 200
 local MIN_FONT_SIZE, MAX_FONT_SIZE = 6, 40
@@ -33,10 +33,9 @@ local CHANNEL_FIELDS = { name = true, zoneChannelID = true }
 local COLOR_FIELDS = { r = true, g = true, b = true, classColoredNames = true }
 
 -- Validation stops at the first problem by raising an error, which ExportString.Validate catches.
--- Level 0 leaves the file and line number off the message.
 local function Check(ok, reason)
 	if not ok then
-		error(reason, 0)
+		error(reason, 0) -- no position prefix; the reason is shown to the player
 	end
 end
 
@@ -47,8 +46,8 @@ local function SafeText(value)
 	if #text <= 30 then
 		return text
 	end
-	-- Bytes 128 to 191 continue a letter. If one comes right after the cut, the cut split a
-	-- letter, so drop the part of it that was kept.
+	-- If the next byte is a UTF-8 continuation byte (0x80-0xBF), the cut split a character, so
+	-- drop its leading bytes.
 	local nextByte = text:byte(31)
 	local cut = text:sub(1, 30)
 	if nextByte >= 128 and nextByte <= 191 then
@@ -63,7 +62,7 @@ local function CheckFields(t, allowed, what)
 	end
 end
 
--- A list needs keys 1 to n with no gaps and no other keys. #t isn't used, since it's unreliable with gaps.
+-- A list must be a sequence: keys 1 to n, no holes, no other keys. #t is unreliable with holes.
 local function CheckList(t, maxLength, what)
 	Check(type(t) == "table", what .. " is not a list")
 	local count = 0
@@ -89,8 +88,8 @@ local function CheckBoolean(value, what)
 	Check(value == nil or type(value) == "boolean", what .. " must be true or false")
 end
 
--- A damaged or hand-edited export can hold bytes that don't form letters. Lua 5.1 has no UTF-8
--- library, so this walks the text: each letter is a lead byte followed by 0 to 3 bytes from 128 to 191.
+-- Hand-edited or damaged exports can contain invalid UTF-8, and Lua 5.1 has no utf8 library.
+-- Checks each lead byte and that it's followed by the right number of continuation bytes.
 local function IsValidUTF8(text)
 	local i = 1
 	while i <= #text do
@@ -235,6 +234,11 @@ local function CleanProfile(data)
 	return profile
 end
 
+function ExportString.Export(profile)
+	local data = { categories = profile.categories, windows = profile.windows, colors = profile.colors }
+	return EXPORT_PREFIX .. C_EncodingUtil.EncodeBase64(C_EncodingUtil.SerializeCBOR(data))
+end
+
 -- Returns a clean copy of `data`, or nil and the reason it was rejected.
 function ExportString.Validate(data)
 	local ok, result = pcall(CleanProfile, data)
@@ -242,11 +246,6 @@ function ExportString.Validate(data)
 		return result
 	end
 	return nil, result
-end
-
-function ExportString.Export(profile)
-	local data = { categories = profile.categories, windows = profile.windows, colors = profile.colors }
-	return EXPORT_PREFIX .. C_EncodingUtil.EncodeBase64(C_EncodingUtil.SerializeCBOR(data))
 end
 
 -- Returns a profile, or nil and a reason to show the user.

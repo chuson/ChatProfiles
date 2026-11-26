@@ -20,7 +20,7 @@ local ns = {}
 assert(loadfile("ChatProfiles/ExportString.lua"))("ChatProfiles", ns)
 local Validate, Import = ns.ExportString.Validate, ns.ExportString.Import
 
-local KOREAN_LETTER = "\237\149\156" -- three bytes
+local HANGUL_SYLLABLE = "\237\149\156" -- U+D55C, 3 bytes in UTF-8
 
 local function GoodProfile()
 	return {
@@ -89,11 +89,11 @@ end)
 Accepts("a tab with only a key and name", function(p)
 	p.windows = { { key = "name:x", name = "x" } }
 end)
-local unusualName = "a||b " .. KOREAN_LETTER
+local unusualName = "a||b " .. HANGUL_SYLLABLE
 local kept = Accepts("names with a literal | and letters outside English", function(p)
 	p.windows[3].name = unusualName
 	p.windows[3].key = "name:anything"
-	p.windows[1].channels[2].name = KOREAN_LETTER
+	p.windows[1].channels[2].name = HANGUL_SYLLABLE
 end)
 if kept and (kept.windows[3].name ~= unusualName or kept.windows[3].key ~= "name:" .. unusualName) then
 	Fail("a name was changed on import, or the key wasn't built from it")
@@ -154,16 +154,16 @@ Rejects("a name with a byte that isn't UTF-8", function(p)
 	p.windows[3].name = "tr\255ade"
 end)
 Rejects("a name with a letter cut short", function(p)
-	p.windows[3].name = "trade" .. KOREAN_LETTER:sub(1, 2)
+	p.windows[3].name = "trade" .. HANGUL_SYLLABLE:sub(1, 2)
 end)
 Rejects("a channel name with a control character", function(p)
 	p.windows[1].channels[2].name = "My\tChannel"
 end)
 local reason = Rejects("an unknown field with a long name in another alphabet", function(p)
-	p.windows[1]["a" .. KOREAN_LETTER:rep(20)] = true
+	p.windows[1]["a" .. HANGUL_SYLLABLE:rep(20)] = true
 end)
--- The quoted field is cut at 30 bytes: "a" and 9 whole letters, not part of a 10th.
-if not (reason or ""):find("unknown field a" .. KOREAN_LETTER:rep(9) .. " in", 1, true) then
+-- The quoted field is cut at 30 bytes: "a" and 9 whole characters, not part of a 10th.
+if not (reason or ""):find("unknown field a" .. HANGUL_SYLLABLE:rep(9) .. " in", 1, true) then
 	Fail("a quoted field name wasn't cut between letters: " .. tostring(reason))
 end
 Rejects("a name that is too long", function(p)

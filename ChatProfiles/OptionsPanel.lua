@@ -137,6 +137,10 @@ StaticPopupDialogs.CHAT_PROFILES_NAME = {
 	hideOnEscape = true,
 }
 
+local function AskForName(prompt, data)
+	StaticPopup_Show("CHAT_PROFILES_NAME", prompt, nil, data)
+end
+
 StaticPopupDialogs.CHAT_PROFILES_DELETE = {
 	text = 'Delete "%s"? Characters using it keep their chat settings.',
 	button1 = "Delete",
@@ -150,10 +154,6 @@ StaticPopupDialogs.CHAT_PROFILES_DELETE = {
 	whileDead = true,
 	hideOnEscape = true,
 }
-
-local function AskForName(prompt, data)
-	StaticPopup_Show("CHAT_PROFILES_NAME", prompt, nil, data)
-end
 
 local function Label(text, font, anchor, x, y)
 	local label = panel:CreateFontString(nil, "ARTWORK", font or "GameFontHighlight")
