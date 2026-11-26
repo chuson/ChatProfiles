@@ -213,7 +213,7 @@ Sharing
 
 Behavior:
 
-- The status line reads "This character isn't using a profile.", "Your chat settings match the profile.", "N unsaved changes…", or, after a failed apply, that changes won't be saved until a reload or login. Up to 8 differences are listed below it, followed by any duplicate tab names.
+- The status line reads "This character isn't using a profile.", "Your chat settings match the profile.", "N unsaved changes…", or, after a failed apply, that changes won't be saved until a reload or login. Up to 8 differences are listed below it, followed by any duplicate tab names. The status is worked out when the panel opens, after each of its actions, and when the mouse comes back over the panel. Changing chat settings fires no events (checked in game by listening for every chat-related event), so returning to the panel is the cue that something may have changed.
 - Selecting a profile applies it, after saving the current chat into the previously selected profile, so no changes are lost on a switch. In combat, the panel says profiles can't be switched and nothing changes.
 - On a character that isn't using a profile, selecting one first asks for confirmation in a popup, since that character's chat settings aren't saved anywhere. The popup suggests clicking New first to keep them.
 - While no category is checked, a red line under the checkboxes says changes aren't saved, and Save now and Export are disabled.

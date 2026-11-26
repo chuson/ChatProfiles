@@ -414,6 +414,16 @@ panel:SetScript("OnShow", function()
 	Refresh()
 end)
 
+-- Changing chat settings fires no events, so the status is checked again when the mouse comes
+-- back to the panel, as it does after a change in the chat window. Motion only, so clicks
+-- still reach whatever is underneath.
+panel:SetMouseMotionEnabled(true)
+panel:SetScript("OnEnter", function()
+	if widgets then
+		Refresh()
+	end
+end)
+
 SLASH_CHATPROFILES1 = "/chatprofiles"
 SLASH_CHATPROFILES2 = "/chatp"
 SlashCmdList.CHATPROFILES = function()
