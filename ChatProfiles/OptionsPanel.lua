@@ -70,10 +70,13 @@ local function Refresh()
 		checkbox:SetChecked(profile ~= nil and profile.categories[checkbox.category])
 		checkbox:SetEnabled(profile ~= nil)
 	end
+	-- With every category off, nothing is saved, and an export couldn't be imported.
+	local hasCategory = profile ~= nil and Profiles.HasCategoryOn(profile)
+	widgets.categoryWarning:SetShown(profile ~= nil and not hasCategory)
 	widgets.rename:SetEnabled(profile ~= nil)
 	widgets.delete:SetEnabled(profile ~= nil)
-	widgets.export:SetEnabled(profile ~= nil)
-	widgets.saveNow:SetEnabled(profile ~= nil and not applyFailed)
+	widgets.export:SetEnabled(hasCategory)
+	widgets.saveNow:SetEnabled(hasCategory and not applyFailed)
 
 	-- Both are nil when this character has no profile.
 	local differences, duplicateTabNames = Profiles.Differences()
@@ -86,8 +89,14 @@ local function ShowMessage(text)
 end
 
 local function SelectProfile(name)
-	local remaining = Profiles.Select(name)
-	ShowMessage(#remaining > 0 and "Some settings couldn't be applied. They're listed above." or nil)
+	local remaining, reason = Profiles.Select(name)
+	if not remaining then
+		ShowMessage(reason)
+	elseif #remaining > 0 then
+		ShowMessage("Some settings couldn't be applied. They're listed above.")
+	else
+		ShowMessage(nil)
+	end
 	Refresh()
 end
 
@@ -273,7 +282,16 @@ local function BuildCategorySection(anchor)
 		table.insert(widgets.checkboxes, checkbox)
 		previous = checkbox
 	end
-	return previous
+
+	widgets.categoryWarning = Label(
+		"Check at least one category. Until then, changes aren't saved to this profile.",
+		"GameFontHighlightSmall",
+		previous,
+		0,
+		-6
+	)
+	widgets.categoryWarning:SetTextColor(RED_FONT_COLOR:GetRGB())
+	return widgets.categoryWarning
 end
 
 local function BuildSharingSection(anchor)

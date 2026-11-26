@@ -2,6 +2,8 @@
 
 A WoW Forever addon that saves your chat setup as a named profile and shares it between characters. Set up chat once, and every character using the profile gets the same tabs, channels and colors. Changes made on any of them are saved back to the profile when you log out.
 
+ChatProfiles works on the standard chat window, using the same settings as the game's chat menus. Chat addons that restyle that window should keep working. Addons that replace it with their own window aren't supported.
+
 ## Installing
 
 Copy the `ChatProfiles` folder into `World of Warcraft\_forever_\Interface\AddOns`, then restart the game or return to character select.
@@ -22,7 +24,7 @@ If some settings can't be applied, ChatProfiles stops saving for that character 
 
 ## What a profile saves
 
-Each part can be turned off per profile:
+You choose which parts each profile saves. At least one is required.
 
 - **Tabs:** which tabs you have, the position of undocked tabs, and whether each tab is locked.
 - **Message filters:** which messages and channels each tab shows.

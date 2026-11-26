@@ -90,7 +90,7 @@ The list holds tabs, but it's called `windows` because that's the client's word.
 
 ### Setting categories
 
-Each profile stores which categories it manages (`categories`). A category that's turned off is neither applied nor saved, so the character, or another addon, keeps control of it. The panel shows each one with a short description.
+Each profile stores which categories it manages (`categories`). A category that's turned off is neither applied nor saved, so the character, or another addon, keeps control of it. With every category off, a profile is neither saved nor exported: the panel shows a warning in red and disables Save now and Export until one is back on, and imports with none on are rejected. New starts with every category on when the selected profile has none. The panel shows each one with a short description.
 
 | Category | Panel description | Default | Notes |
 | --- | --- | --- | --- |
@@ -139,15 +139,16 @@ A character uses at most one profile. Selecting a profile applies it, and while 
 
 | Trigger | Condition | Action |
 | --- | --- | --- |
-| Login (`PLAYER_LOGIN`) | uses a profile | apply the profile; on failure, stop saving this session |
-| Select a profile | always | save into the old profile, then apply the new one |
+| Login (`PLAYER_LOGIN`) | uses a profile | apply the profile, after combat ends if it started in combat; on failure, stop saving this session |
+| Select a profile | not in combat | save into the old profile, then apply the new one |
 | New | always | live chat becomes a new profile, and this character uses it |
 | Save now (panel button) | uses a profile, session not failed | save live chat into the profile immediately |
 | Logout (`PLAYER_LOGOUT`) | uses a profile, session not failed | save live chat into the profile |
 
 - **Login** (`PLAYER_LOGIN`, which also fires on `/reload`): apply the profile. Apply only changes what differs, so a character already in sync is left alone. If anything still differs afterward, the session is marked failed and chat prints a short warning. The apply runs one frame after the event (`C_Timer.After(0)`), so other addons' login handlers, such as chat history restore, finish first. The client's downloaded chat settings arrive before `PLAYER_LOGIN` and nothing changes afterward (open question 1), so there is no retry and no fixed delay.
+- **Combat.** The game blocks some chat changes in combat, and a blocked change does nothing without raising an error, so an apply in combat fails and stops saving. Selecting a profile in combat is refused with a message. If a `/reload` happens in combat, the login apply waits for `PLAYER_REGEN_ENABLED`, and saves are skipped until it runs, since the live settings aren't the profile's yet.
 - **Select** (panel menu): save the current chat into the previously selected profile, if any, then apply the new one and list anything that didn't take. **None** saves into the old profile and detaches the character.
-- **Save** is `Profiles.SaveSelected()`: it replaces the profile's windows and colors with `ChatSettings.Read()`. It saves even when nothing seems to differ, because a category that was just turned on has no saved data yet, so the comparison can't see its changes. Categories that are turned off are dropped. It runs at `PLAYER_LOGOUT`, on **Save now**, and just before switching profiles. `PLAYER_LOGOUT` fires on both logout and `/reload`, the chat APIs still return the live setup when it fires (open question 2), and it is the last event before saved variables are written.
+- **Save** is `Profiles.SaveSelected()`: it replaces the profile's windows and colors with `ChatSettings.Read()`. It saves even when nothing seems to differ, because a category that was just turned on has no saved data yet, so the comparison can't see its changes. Categories that are turned off are dropped, and with every category off it saves nothing rather than emptying the profile. It runs at `PLAYER_LOGOUT`, on **Save now**, and just before switching profiles. `PLAYER_LOGOUT` fires on both logout and `/reload`, the chat APIs still return the live setup when it fires (open question 2), and it is the last event before saved variables are written.
 - **New** saves the live setup as a new profile and switches this character to it, keeping the selected profile's categories so one turned off on purpose stays off. The previous profile is left as it was.
 - **No version numbers.** Login and logout use the same comparison with opposite winners: the profile wins at login, and the character wins at logout, so a character that changed its chat has always saved before the next login. The one case this can't distinguish is a session that ended without its logout save (a crash, or the guard below). The next login then restores the profile, and that session's changes are lost. This matches the accepted crash risk in section 9.
 - **Apply guard.** If an apply (at login or on select) still leaves differences, the session is marked failed and every save is skipped until an apply succeeds, New is used, or the player reloads, including the save-first step of a profile switch. A half-applied state must not overwrite the profile, because other characters share it. The panel's status line says so, and Save now is disabled.
@@ -169,7 +170,7 @@ A character uses at most one profile. Selecting a profile applies it, and while 
 - Export writes the *saved* profile. When the character has unsaved changes, the panel says they aren't included.
 - **Strings are data, never code.** Import checks the length first (64 KB), removes spaces and line breaks (forums and chat apps wrap long lines, and Base64 never contains either), checks the prefix, and decodes under `pcall`. It then validates against a whitelist before anything is stored, and stops at the first problem:
   - known fields only, with type checks, at every level
-  - categories are booleans
+  - categories are booleans, and at least one is on
   - at most 10 tabs, no two with the same key, and keys of `window:1`, `window:2` or `name:...`; a custom tab's key is rebuilt from its name
   - font size 0 or a whole number from 6 to 40; colors and opacity from 0 to 1; the lock and docked state are booleans
   - General can't be undocked; a position or size needs `docked = false`; the corner is one of the four; offsets are from -1 to 1; width and height are above 0 and at most 4096
@@ -213,7 +214,8 @@ Sharing
 Behavior:
 
 - The status line reads "This character isn't using a profile.", "Your chat settings match the profile.", "N unsaved changes…", or, after a failed apply, that changes won't be saved until a reload or login. Up to 8 differences are listed below it, followed by any duplicate tab names.
-- Selecting a profile applies it, after saving the current chat into the previously selected profile, so no changes are lost on a switch.
+- Selecting a profile applies it, after saving the current chat into the previously selected profile, so no changes are lost on a switch. In combat, the panel says profiles can't be switched and nothing changes.
+- While no category is checked, a red line under the checkboxes says changes aren't saved, and Save now and Export are disabled.
 - **New** and **Rename** ask for a name in a popup. A rejected name shows the reason at the top of the screen and keeps the popup open. Renaming to the same name just closes it.
 - **Delete** confirms in a popup. Characters using the profile keep their chat settings.
 - **Export** shows the export string in the box, selected for Ctrl+C, since addons can't write to the clipboard. **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup.

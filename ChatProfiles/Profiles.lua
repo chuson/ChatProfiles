@@ -15,6 +15,10 @@ local db -- ChatProfilesDB, set when this addon's saved variables load
 -- setup must never overwrite it. Saves are skipped until an apply succeeds.
 local lastApplyFailed = false
 
+-- Set while the login apply waits for combat to end. Until then the live settings are this
+-- character's, not the profile's, so saving them would overwrite the profile.
+local loginApplyPending = false
+
 local function CharacterKey()
 	return UnitName("player") .. "-" .. GetNormalizedRealmName()
 end
@@ -90,14 +94,24 @@ function Profiles.Differences()
 	return ChatSettings.Diff(live, profile), live.duplicateTabNames
 end
 
+function Profiles.HasCategoryOn(profile)
+	for _, on in pairs(profile.categories) do
+		if on then
+			return true
+		end
+	end
+	return false
+end
+
 -- Saves the live settings into the selected profile. Runs at logout, on Save now, and before
 -- switching profiles.
 --
 -- Saves even when nothing seems to differ. A category that was just turned on has no saved
--- data yet, so the comparison can't see its changes. Categories that are turned off are dropped.
+-- data yet, so the comparison can't see its changes. Categories that are turned off are dropped,
+-- so with every category off nothing is saved, rather than emptying the profile.
 function Profiles.SaveSelected()
 	local _, profile = Profiles.Selected()
-	if not profile or lastApplyFailed then
+	if not profile or lastApplyFailed or loginApplyPending or not Profiles.HasCategoryOn(profile) then
 		return
 	end
 	local live = ChatSettings.Read(profile.categories)
@@ -113,8 +127,12 @@ function Profiles.SetCategoryEnabled(category, enabled)
 end
 
 -- Saves into the selected profile, then applies the new one. Pass nil to use no profile.
--- Returns what did not apply.
+-- Returns what did not apply, or nil and a reason if the switch can't happen now.
 function Profiles.Select(name)
+	-- The game blocks some chat changes in combat, and a blocked change fails without an error.
+	if InCombatLockdown() then
+		return nil, "You can't switch profiles in combat."
+	end
 	-- Changes since the last save belong to the old profile, so save before switching.
 	Profiles.SaveSelected()
 	db.profileByCharacter[CharacterKey()] = name
@@ -134,7 +152,7 @@ function Profiles.SaveAsNew(name)
 	-- Start from the selected profile's categories, so one that was turned off on purpose stays off.
 	local _, selected = Profiles.Selected()
 	local categories = { tabs = true, messagesAndChannels = true, fontAndBackground = true, colors = true }
-	if selected then
+	if selected and Profiles.HasCategoryOn(selected) then
 		for category, enabled in pairs(selected.categories) do
 			categories[category] = enabled
 		end
@@ -194,11 +212,20 @@ local function LoadSavedVariables()
 	db.profileByCharacter = db.profileByCharacter or {}
 end
 
+local events = CreateFrame("Frame")
+
 local function ApplyAtLogin()
 	local name, profile = Profiles.Selected()
 	if not profile then
 		return
 	end
+	-- A /reload can happen mid-fight, and the game blocks some chat changes in combat.
+	if InCombatLockdown() then
+		loginApplyPending = true
+		events:RegisterEvent("PLAYER_REGEN_ENABLED")
+		return
+	end
+	loginApplyPending = false
 	local remaining, firstError = Apply(profile)
 	if #remaining > 0 then
 		print(
@@ -213,7 +240,6 @@ local function ApplyAtLogin()
 	end
 end
 
-local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_LOGOUT")
@@ -231,6 +257,10 @@ events:SetScript("OnEvent", function(self, event, loadedAddon)
 		-- measured for open question 1 in the design doc. Deferring with After(0) lets other addons'
 		-- login code run first.
 		C_Timer.After(0, ApplyAtLogin)
+	elseif event == "PLAYER_REGEN_ENABLED" then
+		-- Combat has ended after a login apply was put off.
+		self:UnregisterEvent(event)
+		ApplyAtLogin()
 	elseif event == "PLAYER_LOGOUT" then
 		-- This also fires on /reload. Chat settings can still be read at this point.
 		Profiles.SaveSelected()

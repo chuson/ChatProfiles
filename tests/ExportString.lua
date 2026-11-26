@@ -242,6 +242,12 @@ end)
 Rejects("a category that is not a boolean", "tabs must be true or false", function(p)
 	p.categories.tabs = 1
 end)
+Rejects("every category turned off", "doesn't include any categories", function(p)
+	p.categories = { tabs = false, messagesAndChannels = false, fontAndBackground = false, colors = false }
+end)
+Rejects("no categories at all", "doesn't include any categories", function(p)
+	p.categories = {}
+end)
 
 -- Rejected: the tab list
 

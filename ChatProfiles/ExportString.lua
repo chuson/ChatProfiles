@@ -246,11 +246,13 @@ local function CleanProfile(data)
 
 	Check(type(data.categories) == "table", "the profile has no categories")
 	CheckFields(data.categories, CATEGORIES, "categories")
-	local categories = {}
+	local categories, anyOn = {}, false
 	for category in pairs(CATEGORIES) do
 		CheckBoolean(data.categories[category], category)
 		categories[category] = data.categories[category] == true
+		anyOn = anyOn or categories[category]
 	end
+	Check(anyOn, "the profile doesn't include any categories")
 
 	CheckList(data.windows, Constants.ChatFrameConstants.MaxChatWindows, "tabs")
 	local windows, seen = {}, {}

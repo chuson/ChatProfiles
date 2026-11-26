@@ -37,6 +37,7 @@ read_globals = {
 	"GetChatWindowSavedDimensions",
 	"GetChatWindowSavedPosition",
 	"GetNormalizedRealmName",
+	"InCombatLockdown",
 	"RED_FONT_COLOR",
 	"SetChatColorNameByClass",
 	"SetChatWindowSavedDimensions",
