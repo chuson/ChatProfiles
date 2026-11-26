@@ -1,3 +1,12 @@
 # Keep personal VS Code settings out, but share the recommended extensions.
 .vscode/*
 !.vscode/extensions.json
+
+# Release builds, made by the release workflow or by hand.
+build/
+*.zip
+
+# Files the operating system leaves behind.
+.DS_Store
+Thumbs.db
+desktop.ini

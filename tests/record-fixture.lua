@@ -1,7 +1,7 @@
 -- Turns a chat recording (ChatProfilesDB.capture in the SavedVariables file) into
 -- tests/fixtures/ChatRecording.lua. CONTRIBUTING.md explains how to make the recording.
 -- Run from the repository root:
---   lua tests/fixtures/convert.lua <path to WTF/Account/NAME/SavedVariables/ChatProfiles.lua>
+--   lua tests/record-fixture.lua <path to WTF/Account/NAME/SavedVariables/ChatProfiles.lua>
 local input, output = assert(arg[1], "pass the SavedVariables file"), "tests/fixtures/ChatRecording.lua"
 dofile(input)
 local capture = assert(ChatProfilesDB.capture, "no capture in " .. input)
@@ -42,7 +42,7 @@ local function Emit(s)
 end
 
 Emit("-- Chat settings recorded from a WoW Forever character on " .. os.date("%Y-%m-%d") .. ". Made by")
-Emit("-- tests/fixtures/convert.lua; CONTRIBUTING.md explains how to record a new one.")
+Emit("-- tests/record-fixture.lua; CONTRIBUTING.md explains how to record a new one.")
 Emit("--")
 Emit("-- windows[n].info is what GetChatWindowInfo(n) returned: name, fontSize, r, g, b, a, shown,")
 Emit("-- locked, docked, uninteractable. savedPosition and savedSize are what GetChatWindowSavedPosition")

@@ -1,6 +1,6 @@
 # Contributing
 
-ChatProfiles rewrites a player's chat every time they log in, so a broken change is very disruptive. Test every change well, both with the tests and in game. `ChatProfiles Design Doc.md` explains how the addon works and why.
+ChatProfiles rewrites a player's chat every time they log in, so a broken change is very disruptive. Test every change well, both with the tests and in game. [docs/DESIGN.md](docs/DESIGN.md) explains how the addon works and why.
 
 ## Setup
 
@@ -58,7 +58,7 @@ The `Read` tests replay what the game returned on a real character, in `tests/fi
    /run for w=1,10 do local t=ChatProfilesDB.capture[w] t.p={GetChatWindowSavedPosition(w)} t.s={GetChatWindowSavedDimensions(w)} end
    ```
 
-2. `/reload`, then run `lua tests/fixtures/convert.lua <path to WTF\Account\NAME\SavedVariables\ChatProfiles.lua>`.
+2. `/reload`, then run `lua tests/record-fixture.lua <path to WTF\Account\NAME\SavedVariables\ChatProfiles.lua>`.
 3. Run the tests. Where they fail, decide whether the client changed or the test assumed too much.
 4. Clear the recording with `/run ChatProfilesDB.capture=nil` and another `/reload`.
 
@@ -67,3 +67,10 @@ The `Read` tests replay what the game returned on a real character, in `tests/fi
 - Keep each pull request to one change, and say what you tested.
 - Review it one area at a time: architecture, size, order, naming, comments, correctness, efficiency.
 - If behavior changes, update the design doc to match.
+
+## Releasing
+
+1. Set `## Version` in `ChatProfiles/ChatProfiles.toc` (for example `0.2.0`) and commit it.
+2. Tag that commit with the same version and push the tag: `git tag v0.2.0` then `git push origin v0.2.0`. A suffix like `v0.2.0-beta1` makes a pre-release.
+
+The release workflow runs luacheck and the tests, checks the tag matches the `.toc`, and publishes `ChatProfiles-v0.2.0.zip` (the addon folder with `LICENSE`) and a `release.json` to GitHub Releases. Addon managers such as WowUp install and update from there.

@@ -1,5 +1,5 @@
 -- Chat settings recorded from a WoW Forever character on 2026-11-26. Made by
--- tests/fixtures/convert.lua; CONTRIBUTING.md explains how to record a new one.
+-- tests/record-fixture.lua; CONTRIBUTING.md explains how to record a new one.
 --
 -- windows[n].info is what GetChatWindowInfo(n) returned: name, fontSize, r, g, b, a, shown,
 -- locked, docked, uninteractable. savedPosition and savedSize are what GetChatWindowSavedPosition

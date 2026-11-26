@@ -215,6 +215,7 @@ Behavior:
 
 - The status line reads "This character isn't using a profile.", "Your chat settings match the profile.", "N unsaved changes…", or, after a failed apply, that changes won't be saved until a reload or login. Up to 8 differences are listed below it, followed by any duplicate tab names.
 - Selecting a profile applies it, after saving the current chat into the previously selected profile, so no changes are lost on a switch. In combat, the panel says profiles can't be switched and nothing changes.
+- On a character that isn't using a profile, selecting one first asks for confirmation in a popup, since that character's chat settings aren't saved anywhere. The popup suggests clicking New first to keep them.
 - While no category is checked, a red line under the checkboxes says changes aren't saved, and Save now and Export are disabled.
 - **New** and **Rename** ask for a name in a popup. A rejected name shows the reason at the top of the screen and keeps the popup open. Renaming to the same name just closes it.
 - **Delete** confirms in a popup. Characters using the profile keep their chat settings.
@@ -225,7 +226,7 @@ Behavior:
 
 ## 9. Risks and accepted trade-offs
 
-- No undo. Selecting a profile on a character that uses none overwrites its setup with nothing saved first. Mitigation: use New, or export, before the first apply.
+- No undo. Selecting a profile on a character that uses none overwrites its setup with nothing saved first. Mitigation: the panel asks for confirmation and suggests New first.
 - A change on one character is saved into the shared profile and applied on every character that uses it at its next login. Two characters using the same profile: last logout wins. Accepted.
 - A failed apply skips saving (section 6), so partial failures can't spread through a shared profile.
 - The login apply relies on the client's chat settings being final by `PLAYER_LOGIN`, which was measured on one character (open question 1). The post-apply check and the apply guard catch a late overwrite if one happens.
