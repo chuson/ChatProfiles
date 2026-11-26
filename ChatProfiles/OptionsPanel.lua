@@ -26,6 +26,9 @@ local CATEGORIES = {
 }
 
 local panel = CreateFrame("Frame")
+-- New frames start shown. SettingsPanelMixin:DisplayLayout reparents the panel into a canvas that
+-- may already be visible, then calls Show, so a shown panel would never fire OnShow the first time.
+panel:Hide()
 local settingsCategory = Settings.RegisterCanvasLayoutCategory(panel, "ChatProfiles")
 Settings.RegisterAddOnCategory(settingsCategory)
 
