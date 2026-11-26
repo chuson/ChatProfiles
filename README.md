@@ -47,6 +47,10 @@ Open an issue with:
 - Any Lua error text. Turn error popups on with `/console scriptErrors 1` if you don't see any.
 - The status lines from the `/chatprofiles` panel, if they're relevant.
 
+## How this was made
+
+I wrote ChatProfiles with Claude as a coding assistant. I'm a software engineer and SRE by trade, and I treated it the way I'd treat any code I'm responsible for. I set the design and requirements, reviewed the code function by function, and tested every change in game. Several bugs were found only through in-game testing and fixed before release. The addon has automated tests that check its logic against data recorded from a real client, and the commit history shows which changes were AI-assisted.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
