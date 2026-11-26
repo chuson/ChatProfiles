@@ -382,6 +382,33 @@ ExpectDiff(
 	{ "Tabs in a different order", "party: locked differently" }
 )
 
+-- The Combat Log is a static tab: the dock always draws it right after General.
+ExpectDiff(
+	"a profile with the Combat Log after other docked tabs",
+	Live({ General({ docked = true }), CombatLog({ docked = true }), Docked("party"), Docked("trade") }),
+	Profile({ General({ docked = true }), Docked("party"), Docked("trade"), CombatLog({ docked = true }) }),
+	{}
+)
+ExpectDiff(
+	"reordering after a docked Combat Log",
+	Live({ General({ docked = true }), CombatLog({ docked = true }), Docked("trade"), Docked("party") }),
+	Profile({ General({ docked = true }), CombatLog({ docked = true }), Docked("party"), Docked("trade") }),
+	{ "Tabs in a different order" },
+	{
+		"FCF_UnDockFrame ChatFrame5",
+		"FCF_DockFrame ChatFrame5 3",
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_DockFrame ChatFrame4 4",
+	}
+)
+ExpectDiff(
+	"docking the Combat Log and a tab after it",
+	Live({ General({ docked = true }), Docked("party"), CombatLog(UNDOCKED), Tab("trade", UNDOCKED) }),
+	Profile({ General({ docked = true }), Docked("party"), Docked("trade"), CombatLog({ docked = true }) }),
+	{ "trade: undocked instead of docked", "Combat Log: undocked instead of docked" },
+	{ "FCF_DockFrame ChatFrame5 4", "FCF_DockFrame ChatFrame2 2" }
+)
+
 -- Font and background
 
 local looks = { fontSize = 12, r = 0.5, g = 0, b = 0, a = 0.25 }
@@ -445,9 +472,16 @@ ExpectDiff(
 	{}
 )
 ExpectDiff(
-	"the combat log, which has no message groups",
-	Live({ CombatLog() }),
-	Profile({ CombatLog({ messageGroups = { "SAY" }, channels = { { name = "Trade", zoneChannelID = 2 } } }) }),
+	"different message groups on the Combat Log",
+	Live({ CombatLog({ messageGroups = { "LOOT", "OPENING" }, channels = {} }) }),
+	Profile({ CombatLog({ messageGroups = { "OPENING", "SKILL" }, channels = {} }) }),
+	{ "Combat Log: doesn't show SKILL messages", "Combat Log: also shows LOOT messages" },
+	{ "ChatFrame2:AddMessageGroup SKILL", "ChatFrame2:RemoveMessageGroup LOOT" }
+)
+ExpectDiff(
+	"a Combat Log saved before its message groups were saved",
+	Live({ CombatLog({ messageGroups = { "LOOT", "OPENING" }, channels = {} }) }),
+	Profile({ CombatLog() }),
 	{}
 )
 ExpectDiff(
@@ -711,12 +745,16 @@ Check(
 )
 Equal(general.fontSize, 0, "a font size that was never set wasn't read as 0")
 
--- The client does report message groups for the combat log, but Read leaves them out.
 local combatLog = WindowWithKey(live.windows, "window:2")
-Check(
-	combatLog.messageGroups == nil and combatLog.channels == nil,
-	"the combat log's message groups or channels were read"
-)
+Equal(combatLog.messageGroups, {
+	"COMBAT_HONOR_GAIN",
+	"COMBAT_MISC_INFO",
+	"COMBAT_XP_GAIN",
+	"OPENING",
+	"PET_INFO",
+	"TRADESKILLS",
+}, "the Combat Log's message groups weren't read")
+Equal(combatLog.channels, {}, "the Combat Log's empty channel list wasn't read")
 
 local colorCount, recordedColorCount = 0, 0
 for _ in pairs(live.colors) do

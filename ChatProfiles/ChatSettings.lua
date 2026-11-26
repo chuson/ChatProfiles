@@ -41,9 +41,8 @@ local function ReadWindow(windowNumber, key, categories)
 	if categories.fontAndBackground then
 		window.fontSize, window.r, window.g, window.b, window.a = fontSize, r, g, b, a
 	end
-	-- The combat log uses its own filters, not message groups. Both lists are sorted, so an
-	-- unchanged setup saves and exports the same way every time.
-	if categories.messagesAndChannels and windowNumber ~= COMBAT_LOG_WINDOW then
+	-- Both lists are sorted, so an unchanged setup saves and exports the same way every time.
+	if categories.messagesAndChannels then
 		window.messageGroups = { GetChatWindowMessages(windowNumber) }
 		table.sort(window.messageGroups)
 		window.channels = ReadChannels(windowNumber)
@@ -242,8 +241,8 @@ local function DiffWindow(frame, have, want, categories, dockIndex, addDifferenc
 		end
 	end
 
-	-- Either side may have no message groups or channels: the combat log never does, and
-	-- neither does a profile saved while this category was off.
+	-- A profile may have no message groups or channels: one saved while this category was off,
+	-- or a Combat Log saved by an earlier version, which didn't save its groups.
 	if categories.messagesAndChannels and want.messageGroups and have.messageGroups then
 		local missing, extra = SetDifference(have.messageGroups, want.messageGroups, function(group)
 			return group
@@ -308,13 +307,13 @@ local function IsCustomKey(key)
 end
 
 -- FCF_DockFrame returns early for a tab that's already docked, so each tab is undocked and
--- docked again at its place, after General, which never moves. Undocking the selected tab
--- changes the selection, so it's selected again afterward.
-local function RedockInOrder(frames)
+-- docked again at its place, starting at `firstIndex`. Undocking the selected tab changes the
+-- selection, so it's selected again afterward.
+local function RedockInOrder(frames, firstIndex)
 	local selected = FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK)
 	for i, frame in ipairs(frames) do
 		FCF_UnDockFrame(frame)
-		FCF_DockFrame(frame, i + 1)
+		FCF_DockFrame(frame, firstIndex + i - 1)
 	end
 	if selected then
 		FCFDock_SelectWindow(GENERAL_CHAT_DOCK, selected)
@@ -331,15 +330,30 @@ function ChatSettings.Diff(live, profile)
 		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab })
 	end
 
-	-- Profiles list their docked tabs first, in dock order, so counting them gives each one's
-	-- place in the dock. A profile saved before dock state was stored counts as all docked.
-	local liveByKey, wanted, dockIndex, dockedCount = {}, {}, {}, 0
+	-- General and Combat Log are static tabs (isStaticDocked): the dock always draws them first,
+	-- and other tabs can't be dragged between them, so they have fixed places and no order.
+	local general, combatLog = "window:" .. GENERAL_WINDOW, "window:" .. COMBAT_LOG_WINDOW
+	local function IsStatic(key)
+		return key == general or key == combatLog
+	end
+
+	-- Profiles list their docked tabs in dock order, so counting them gives each one's place
+	-- after the static tabs. A profile saved before dock state was stored counts as all docked.
+	local liveByKey, wanted = {}, {}
 	for _, have in ipairs(live.windows) do
 		liveByKey[have.key] = have
 	end
+	local wantsCombatLogDocked = false
 	for _, want in ipairs(profile.windows) do
 		wanted[want.key] = want
-		if want.docked ~= false then
+		if want.key == combatLog and want.docked ~= false then
+			wantsCombatLogDocked = true
+		end
+	end
+	local dockIndex = { [general] = 1, [combatLog] = 2 }
+	local dockedCount = wantsCombatLogDocked and 2 or 1
+	for _, want in ipairs(profile.windows) do
+		if not IsStatic(want.key) and want.docked ~= false then
 			dockedCount = dockedCount + 1
 			dockIndex[want.key] = dockedCount
 		end
@@ -357,21 +371,20 @@ function ChatSettings.Diff(live, profile)
 		end
 	end
 
-	-- Compares the tabs that are docked both live and in the profile, leaving out General. This
-	-- comes before each tab's own changes, since docking a tab locks it. Tabs that are about to be
-	-- docked are left out here and docked at their place by DiffWindow.
+	-- Compares the tabs that are docked both live and in the profile, leaving out the static tabs.
+	-- This comes before each tab's own changes, since docking a tab locks it. Tabs that are about
+	-- to be docked are left out here and docked at their place by DiffWindow.
 	if categories.tabs then
-		local general = "window:" .. GENERAL_WINDOW
 		local haveOrder, wantOrder = {}, {}
 		for _, have in ipairs(live.windows) do
 			local want = wanted[have.key]
-			if have.key ~= general and have.docked and want and want.docked ~= false then
+			if not IsStatic(have.key) and have.docked and want and want.docked ~= false then
 				table.insert(haveOrder, have.key)
 			end
 		end
 		for _, want in ipairs(profile.windows) do
 			local have = liveByKey[want.key]
-			if want.key ~= general and want.docked ~= false and have and have.docked then
+			if not IsStatic(want.key) and want.docked ~= false and have and have.docked then
 				table.insert(wantOrder, want.key)
 			end
 		end
@@ -380,8 +393,10 @@ function ChatSettings.Diff(live, profile)
 			for i, key in ipairs(wantOrder) do
 				frames[i] = _G["ChatFrame" .. live.windowNumbers[key]]
 			end
+			local liveCombatLog = liveByKey[combatLog]
+			local firstIndex = (liveCombatLog and liveCombatLog.docked) and 3 or 2
 			AddDifference("Tabs in a different order", function()
-				RedockInOrder(frames)
+				RedockInOrder(frames, firstIndex)
 			end)
 		end
 	end

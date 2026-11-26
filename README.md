@@ -38,7 +38,6 @@ It doesn't save:
 
 - **General's position.** Edit Mode controls it, and Edit Mode layouts can already differ per character.
 - **Combat log filters.** The game already shares them across your account.
-- **Which messages the Combat Log tab shows.**
 - **Channel membership.** ChatProfiles never joins or leaves channels.
 
 ## Reporting a bug
