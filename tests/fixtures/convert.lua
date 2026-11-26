@@ -104,7 +104,8 @@ end
 Emit("\t},")
 Emit("}")
 
-local file = assert(io.open(output, "w"))
+-- Binary mode, so Windows doesn't turn the line endings into CRLF.
+local file = assert(io.open(output, "wb"))
 file:write(table.concat(out, "\n"), "\n")
 file:close()
 print("wrote " .. output .. " with " .. #chatTypes .. " chat colors")
