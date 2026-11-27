@@ -1,5 +1,5 @@
--- Settings for luacov, if you use it to see which lines the tests reach:
--- lua -lluacov tests/run.lua, then luacov.
+-- Settings for luacov, which counts the lines the tests reach. The Checks workflow runs it, or
+-- run it yourself: lua -lluacov tests/run.lua, then luacov.
 return {
 	-- Count the addon's own lines, not the tests'.
 	include = { "^ChatProfiles/" },

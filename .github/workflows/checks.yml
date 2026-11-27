@@ -20,7 +20,20 @@ jobs:
       - uses: leafo/gh-actions-lua@35bcb06abec04ec87df82e08caa84d545348536e # v10.0.0
         with:
           luaVersion: "5.1"
-      - run: lua tests/run.lua
+      - uses: leafo/gh-actions-luarocks@e65774a6386cb4f24e293dca7fc4ff89165b64c5 # v4.3.0
+      - run: luarocks install luacov
+      # luacov counts the lines the tests reach, and the table goes on the run's summary page.
+      # Coverage never fails the build; only the tests do.
+      - run: lua -lluacov tests/run.lua
+      - name: Show coverage
+        run: |
+          luacov
+          {
+            echo '### Lines the tests reach'
+            echo '```'
+            sed -n '/^File /,$p' luacov.report.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # A released version always means the same files. Once the .toc's version has a tag, changing
   # the addon without bumping ## Version gets a warning, long before anyone tries to release it.
