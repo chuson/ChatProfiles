@@ -294,9 +294,9 @@ local function BuildSharingSection(anchor)
 	widgets.export:SetPoint("TOPLEFT", line, "BOTTOMLEFT", 0, -12)
 	local import = Button("Import", 100)
 	import:SetPoint("LEFT", widgets.export, "RIGHT", 6, 0)
-	-- Also confirms an import, since nothing else on the panel changes when one is added.
-	widgets.sharingHint = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	widgets.sharingHint:SetPoint("LEFT", import, "RIGHT", 12, 0)
+	-- Confirms an import, since nothing else on the panel changes when one is added.
+	widgets.importMessage = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	widgets.importMessage:SetPoint("LEFT", import, "RIGHT", 12, 0)
 
 	-- One text box serves both directions, and it only appears once Export or Import is clicked.
 	local pasteBox = CreateFrame("ScrollFrame", nil, content, "InputScrollFrameTemplate")
@@ -319,7 +319,7 @@ local function BuildSharingSection(anchor)
 			end,
 			onSaved = function(name)
 				HidePasteArea()
-				widgets.sharingHint:SetText('Imported "' .. name .. '". Choose it from the Profile menu to use it.')
+				widgets.importMessage:SetText('Imported "' .. name .. '". Choose it from the Profile menu to use it.')
 			end,
 		})
 	end)
@@ -398,7 +398,7 @@ panel:SetScript("OnShow", function()
 		BuildWidgets()
 	end
 	HidePasteArea()
-	widgets.sharingHint:SetText("Copy a profile to another account, or share it with a friend.")
+	widgets.importMessage:SetText("")
 	Refresh()
 end)
 

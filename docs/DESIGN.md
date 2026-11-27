@@ -213,7 +213,7 @@ Saved in this profile
     Colors for all message types
 
 Sharing
-[Export]  [Import]  Copy a profile to another account, or share it with a friend.
+[Export]  [Import]
 [ text box, shown after Export or Import ]
 [Add profile]  Paste a ChatProfiles export in the box, then click Add profile.
 ```
@@ -233,7 +233,7 @@ Behavior:
 - **New** and **Rename** ask for a name in a popup. A rejected name shows the reason at the top of the screen and keeps the popup open. Renaming to the same name just closes it.
 - **Delete** confirms in a popup. Characters using the profile keep their chat settings.
 - **Export** shows the export string in the box, selected for Ctrl+C, since addons can't write to the clipboard. The string is the saved profile. While there are unsaved changes, a red note says to Save now to include them, and an open export updates itself after a save or a profile switch.
-- **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup. A rejected string's reason appears in red beside Add profile. Once a profile is added, the hint beside Import says so until the panel is opened again, since nothing else on the panel changes.
+- **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup. A rejected string's reason appears in red beside Add profile. Once a profile is added, a line beside Import says so until the panel is opened again, since nothing else on the panel changes.
 - The panel has no other confirmation messages: New, Rename and Delete show in the menu, and Save now in the status line.
 - The page scrolls when its contents don't fit, which depends on screen size and UI scale.
 - Chat settings change only by selecting a profile or through the game's own chat UI. Import adds a profile to the list and nothing else.
