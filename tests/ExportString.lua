@@ -16,10 +16,11 @@ ChatTypeInfo = helpers.ChatTypeInfoProxy(chatTypes)
 local serialized, serializedCount = {}, 0
 local decodedText
 C_EncodingUtil = {
+	-- Stores a copy, as encoding does, so a later change to the profile can't reach the export.
 	SerializeCBOR = function(data)
 		serializedCount = serializedCount + 1
 		local token = "cbor" .. serializedCount
-		serialized[token] = data
+		serialized[token] = helpers.DeepCopy(data)
 		return token
 	end,
 	EncodeBase64 = function(text)
@@ -148,7 +149,9 @@ if copy then
 	Check(not shared, "Validate returned the imported tables instead of copies")
 end
 
-local unusualName = "a||b " .. HANGUL_SYLLABLE
+-- One character of each UTF-8 length.
+local E_ACUTE, GRINNING_FACE = "\195\169", "\240\159\152\128" -- U+00E9 (2 bytes), U+1F600 (4 bytes)
+local unusualName = "a||b " .. E_ACUTE .. HANGUL_SYLLABLE .. GRINNING_FACE
 local kept = Accepts("names with a literal | and non-ASCII characters", function(p)
 	p.windows[3].name = unusualName
 	p.windows[3].key = "name:anything"
@@ -441,6 +444,40 @@ end)
 Rejects("class-colored names that are not a boolean", "GUILD class-colored names must be true or false", function(p)
 	p.colors.GUILD.classColoredNames = "yes"
 end)
+
+-- CBOR can carry NaN and infinity. NaN fails every comparison, so a check written as "reject
+-- if out of range" would let it through.
+local NUMBER_FIELDS = {
+	{ "font size", "tab 1 has an invalid font size", function(p, value)
+		p.windows[1].fontSize = value
+	end },
+	{ "background color", "tab 1 background color needs", function(p, value)
+		p.windows[1].g = value
+	end },
+	{ "opacity", "tab 1 opacity must be between 0 and 1", function(p, value)
+		p.windows[1].a = value
+	end },
+	{ "position offset", "tab 3 has an invalid position", function(p, value)
+		Undock(p.windows[3]).yOffset = value
+	end },
+	{ "size", "tab 3 has an invalid size", function(p, value)
+		Undock(p.windows[3]).width = value
+	end },
+	{ "channel ID", "tab 1 has an invalid channel ID", function(p, value)
+		p.windows[1].channels[1].zoneChannelID = value
+	end },
+	{ "chat color", "SAY color needs red, green and blue", function(p, value)
+		p.colors.SAY.r = value
+	end },
+}
+local NOT_NUMBERS = { { "NaN", 0 / 0 }, { "infinity", math.huge }, { "negative infinity", -math.huge } }
+for _, field in ipairs(NUMBER_FIELDS) do
+	for _, notNumber in ipairs(NOT_NUMBERS) do
+		Rejects("a " .. field[1] .. " of " .. notNumber[1], field[2], function(p)
+			field[3](p, notNumber[2])
+		end)
+	end
+end
 
 -- Quoting untrusted text in a reason
 

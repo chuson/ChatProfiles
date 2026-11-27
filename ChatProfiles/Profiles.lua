@@ -64,6 +64,8 @@ end
 
 -- Returns what did not apply, and the first error a change raised, if any.
 local function Apply(profile)
+	-- Set first, so an error that escapes ChatSettings.Apply leaves saves off.
+	lastApplyFailed = true
 	local remaining, firstError = ChatSettings.Apply(profile)
 	-- After a clean apply, the live settings match the profile exactly, so saving is safe again.
 	lastApplyFailed = #remaining > 0
@@ -89,6 +91,10 @@ end
 
 function Profiles.LastApplyFailed()
 	return lastApplyFailed
+end
+
+function Profiles.LoginApplyPending()
+	return loginApplyPending
 end
 
 -- Returns what differs between the live settings and the selected profile, and any tab names
@@ -291,6 +297,8 @@ end
 local events = CreateFrame("Frame")
 
 local function ApplyAtLogin()
+	-- Cleared first: the profile can be deleted while combat holds the apply back.
+	loginApplyPending = false
 	local name, profile = Profiles.Selected()
 	if not profile then
 		return
@@ -301,7 +309,6 @@ local function ApplyAtLogin()
 		events:RegisterEvent("PLAYER_REGEN_ENABLED")
 		return
 	end
-	loginApplyPending = false
 	local remaining, firstError = Apply(profile)
 	if #remaining > 0 then
 		print(

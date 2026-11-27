@@ -184,8 +184,8 @@ local tabChanges = ExpectDiff(
 	{ "FCF_Close ChatFrame4", "FCF_OpenNewWindow new true" }
 )
 Check(
-	tabChanges[1].opensOrClosesTab and tabChanges[2].opensOrClosesTab,
-	"opening and closing tabs aren't flagged for Apply's first pass"
+	tabChanges[1].pass == 1 and tabChanges[2].pass == 1,
+	"opening and closing tabs aren't in Apply's first pass"
 )
 
 ExpectDiff(
@@ -210,7 +210,7 @@ local lockChange = ExpectDiff(
 	{ "General: locked differently" },
 	{ "FCF_SetLocked ChatFrame1 true" }
 )
-Check(not lockChange[1].opensOrClosesTab, "a lock change is flagged as opening or closing a tab")
+Check(lockChange[1].pass == 3, "a lock change isn't in Apply's last pass")
 
 ExpectDiff(
 	"a different lock with Tabs off",
@@ -229,13 +229,14 @@ ExpectDiff(
 
 local UNDOCKED = { docked = false, point = "TOPLEFT", xOffset = 0.1, yOffset = -0.25, width = 430, height = 120 }
 
-ExpectDiff(
+local dockChange = ExpectDiff(
 	"an undocked tab the profile has docked",
 	Live({ General({ docked = true }), Tab("whispers", UNDOCKED) }),
 	Profile({ General({ docked = true }), Tab("whispers", { docked = true }) }),
 	{ "whispers: undocked instead of docked" },
 	{ "FCF_DockFrame ChatFrame4 2" }
 )
+Check(dockChange[1].pass == 3, "docking isn't in Apply's last pass, after tabs leave the dock")
 ExpectDiff(
 	"docking a tab after other docked tabs",
 	Live({ General({ docked = true }), Tab("party", { docked = true }), Tab("whispers", UNDOCKED) }),
@@ -243,7 +244,7 @@ ExpectDiff(
 	{ "whispers: undocked instead of docked" },
 	{ "FCF_DockFrame ChatFrame5 3" }
 )
-ExpectDiff(
+local undockChanges = ExpectDiff(
 	"a docked tab the profile has undocked",
 	Live({ General({ docked = true }), Tab("whispers", { docked = true }) }),
 	Profile({ General({ docked = true }), Tab("whispers", UNDOCKED) }),
@@ -259,6 +260,8 @@ ExpectDiff(
 		"FCF_RestorePositionAndDimensions ChatFrame4",
 	}
 )
+Check(undockChanges[1].pass == 2, "undocking isn't in Apply's second pass")
+Check(undockChanges[2].pass == 3, "a position change isn't in Apply's last pass")
 ExpectDiff(
 	"an undocked tab in a different position",
 	Live({ Tab("whispers", UNDOCKED) }),
@@ -270,7 +273,8 @@ ExpectDiff(
 	"an undocked tab in a different corner",
 	Live({ Tab("whispers", UNDOCKED) }),
 	Profile({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { point = "BOTTOMLEFT" })) }),
-	{ "whispers: different position" }
+	{ "whispers: different position" },
+	{ "SetChatWindowSavedPosition 4 BOTTOMLEFT 0.1 -0.25", "FCF_RestorePositionAndDimensions ChatFrame4" }
 )
 ExpectDiff(
 	"an undocked tab of a different size",
@@ -289,7 +293,13 @@ ExpectDiff(
 	"an undocked tab the profile has no position for",
 	Live({ Tab("whispers", { docked = true }) }),
 	Profile({ Tab("whispers", { docked = false }) }),
-	{ "whispers: docked instead of undocked" }
+	{ "whispers: docked instead of undocked" },
+	{
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_SetTabPosition ChatFrame4 0",
+		"FCF_CheckShowChatFrame ChatFrame4",
+		"FCF_CheckShowChatFrame ChatFrame4Tab",
+	}
 )
 ExpectDiff(
 	"a different dock state with Tabs off",
@@ -301,7 +311,8 @@ ExpectDiff(
 	"docking a tab that should also be locked",
 	Live({ Tab("whispers", WithFields(helpers.DeepCopy(UNDOCKED), { locked = false })) }),
 	Profile({ Tab("whispers", { docked = true, locked = true }) }),
-	{ "whispers: undocked instead of docked", "whispers: locked differently" }
+	{ "whispers: undocked instead of docked", "whispers: locked differently" },
+	{ "FCF_DockFrame ChatFrame4 2", "FCF_SetLocked ChatFrame4 true" }
 )
 
 -- Tab order. Live tabs here get windows 4, 5, ... in list order, and Read lists docked tabs in
@@ -331,16 +342,21 @@ local reorder = ExpectDiff(
 		"FCF_DockFrame ChatFrame6 4",
 	}
 )
-Check(not reorder[1].opensOrClosesTab, "reordering is flagged as opening or closing a tab")
+Check(reorder[1].pass == 3, "reordering isn't in Apply's last pass")
 
-selectedTab = ChatFrame4
-Equal(
-	ApplyAll(Diff(
-		Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
-		Profile({ General({ docked = true }), Docked("party"), Docked("trade") })
-	))[5],
-	"FCFDock_SelectWindow GENERAL_CHAT_DOCK ChatFrame4",
-	"the selected tab wasn't selected again after reordering"
+selectedTab = _G.ChatFrame4
+ExpectDiff(
+	"reordering with a tab selected",
+	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
+	Profile({ General({ docked = true }), Docked("party"), Docked("trade") }),
+	{ "Tabs in a different order" },
+	{
+		"FCF_UnDockFrame ChatFrame5",
+		"FCF_DockFrame ChatFrame5 2",
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_DockFrame ChatFrame4 3",
+		"FCFDock_SelectWindow GENERAL_CHAT_DOCK ChatFrame4",
+	}
 )
 selectedTab = nil
 
@@ -355,7 +371,13 @@ ExpectDiff(
 	"an order that differs only by a tab the profile has undocked",
 	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
 	Profile({ General({ docked = true }), Docked("party"), Tab("trade", { docked = false }) }),
-	{ "trade: docked instead of undocked" }
+	{ "trade: docked instead of undocked" },
+	{
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_SetTabPosition ChatFrame4 0",
+		"FCF_CheckShowChatFrame ChatFrame4",
+		"FCF_CheckShowChatFrame ChatFrame4Tab",
+	}
 )
 ExpectDiff(
 	"a different order with Tabs off",
@@ -367,7 +389,14 @@ ExpectDiff(
 	"reordering before a lock change",
 	Live({ General({ docked = true }), Docked("trade"), Tab("party", { docked = true, locked = false }) }),
 	Profile({ General({ docked = true }), Tab("party", { docked = true, locked = true }), Docked("trade") }),
-	{ "Tabs in a different order", "party: locked differently" }
+	{ "Tabs in a different order", "party: locked differently" },
+	{
+		"FCF_UnDockFrame ChatFrame5",
+		"FCF_DockFrame ChatFrame5 2",
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_DockFrame ChatFrame4 3",
+		"FCF_SetLocked ChatFrame5 true",
+	}
 )
 
 -- The Combat Log is a static tab: the dock always draws it right after General.
@@ -395,6 +424,32 @@ ExpectDiff(
 	Profile({ General({ docked = true }), Docked("party"), Docked("trade"), CombatLog({ docked = true }) }),
 	{ "trade: undocked instead of docked", "Combat Log: undocked instead of docked" },
 	{ "FCF_DockFrame ChatFrame5 4", "FCF_DockFrame ChatFrame2 2" }
+)
+ExpectDiff(
+	"undocking the Combat Log while reordering",
+	Live({ General({ docked = true }), CombatLog({ docked = true }), Docked("trade"), Docked("party") }),
+	Profile({ General({ docked = true }), CombatLog(UNDOCKED), Docked("party"), Docked("trade") }),
+	{
+		"Tabs in a different order",
+		"Combat Log: docked instead of undocked",
+		"Combat Log: different position",
+		"Combat Log: different size",
+	},
+	{
+		-- The Combat Log is still docked when the tabs are reordered, so they start at 3.
+		"FCF_UnDockFrame ChatFrame5",
+		"FCF_DockFrame ChatFrame5 3",
+		"FCF_UnDockFrame ChatFrame4",
+		"FCF_DockFrame ChatFrame4 4",
+		"FCF_UnDockFrame ChatFrame2",
+		"FCF_SetTabPosition ChatFrame2 0",
+		"FCF_CheckShowChatFrame ChatFrame2",
+		"FCF_CheckShowChatFrame ChatFrame2Tab",
+		"SetChatWindowSavedPosition 2 TOPLEFT 0.1 -0.25",
+		"FCF_RestorePositionAndDimensions ChatFrame2",
+		"SetChatWindowSavedDimensions 2 430 120",
+		"FCF_RestorePositionAndDimensions ChatFrame2",
+	}
 )
 
 -- Font and background
@@ -569,6 +624,16 @@ ExpectDiff(
 	Profile({ General() }, { SAY = { r = 1, g = 0, b = 0 } }, AllCategoriesExcept("colors")),
 	{}
 )
+-- Categories passed to Diff win over the profile's own, as when a box is unchecked before a save.
+Equal(
+	Texts(Diff(
+		Live({ General() }, { SAY = { r = 1, g = 1, b = 1 } }),
+		Profile({ General() }, { SAY = { r = 1, g = 0, b = 0 } }),
+		AllCategoriesExcept("colors")
+	)),
+	{},
+	"a category passed to Diff as off listed its differences"
+)
 
 -- Order: tabs close first, so a new one can open when every window is in use. Then each
 -- profile tab in order, then colors.
@@ -579,6 +644,78 @@ ExpectDiff(
 	Profile({ General({ locked = true }), Tab("new") }, { SAY = { r = 1, g = 0, b = 0 } }),
 	{ 'Extra tab "old"', "General: locked differently", 'Missing tab "new"', "Different color for Say" }
 )
+
+-- Apply. Read and Diff are swapped for a script: comparison N returns comparisons[N], and each
+-- apply records its text, then raises `fails` if set. Apply compares before each of its three
+-- passes and once more at the end. A scripted change is in the last pass unless it says otherwise.
+
+local ChatSettings = ns.ChatSettings
+local function ApplyScripted(comparisons)
+	local realRead, realDiff = ChatSettings.Read, ChatSettings.Diff
+	local applied, comparison = {}, 0
+	ChatSettings.Read = function()
+		return {}
+	end
+	ChatSettings.Diff = function()
+		comparison = comparison + 1
+		local differences = {}
+		for _, scripted in ipairs(comparisons[comparison] or {}) do
+			table.insert(differences, {
+				text = scripted.text,
+				pass = scripted.pass or 3,
+				apply = function()
+					table.insert(applied, scripted.text)
+					if scripted.fails then
+						error(scripted.fails, 0)
+					end
+				end,
+			})
+		end
+		return differences
+	end
+	local remaining, firstError = ChatSettings.Apply({ categories = ALL_CATEGORIES })
+	ChatSettings.Read, ChatSettings.Diff = realRead, realDiff
+	return applied, Texts(remaining), firstError
+end
+
+local applied, remaining, firstError = ApplyScripted({
+	{
+		{ text = "General: different font size" },
+		{ text = 'Missing tab "new"', pass = 1 },
+		{ text = "party: docked instead of undocked", pass = 2 },
+	},
+	-- Compared again once the tab exists: it opened docked, and the profile has it undocked.
+	{
+		{ text = "General: different font size" },
+		{ text = "new: docked instead of undocked", pass = 2 },
+		{ text = "party: docked instead of undocked", pass = 2 },
+	},
+	{ { text = "General: different font size" }, { text = "new: different font size" } },
+	{},
+})
+Equal(applied, {
+	'Missing tab "new"',
+	"new: docked instead of undocked",
+	"party: docked instead of undocked",
+	"General: different font size",
+	"new: different font size",
+}, "Apply didn't run each pass in order, comparing again before each")
+Equal(remaining, {}, "a clean apply returned differences")
+Check(firstError == nil, "a clean apply returned an error")
+
+applied, remaining, firstError = ApplyScripted({
+	{},
+	{},
+	{ { text = "first", fails = "first error" }, { text = "second", fails = "second error" } },
+	{ { text = "first" }, { text = "second" } },
+})
+Equal(applied, { "first", "second" }, "a change that raised an error stopped the rest")
+Equal(remaining, { "first", "second" }, "changes that raised errors weren't returned")
+Equal(firstError, "first error", "Apply didn't return the first error")
+
+remaining, firstError = select(2, ApplyScripted({ {}, {}, { { text = "ignored" } }, { { text = "ignored" } } }))
+Equal(remaining, { "ignored" }, "a change that silently did nothing wasn't returned")
+Check(firstError == nil, "a change that silently did nothing returned an error")
 
 -- Reading. The game's chat functions replay tests/fixtures/ChatRecording.lua, which was
 -- recorded from a real client, so Read is checked against what the game actually returns.
@@ -748,6 +885,15 @@ end
 Equal(colorCount, recordedColorCount, "Read didn't find every chat color through the ChatTypeInfo proxy")
 Equal(live.colors.SAY, { r = 1, g = 1, b = 1, classColoredNames = false }, "Say's color wasn't read correctly")
 Equal(live.colors.BN_ALERT, { r = 1, g = 1, b = 1 }, "a chat type without name coloring reported the flag")
+
+-- Before chat loads, ChatTypeInfo is a plain table.
+ChatTypeInfo = { SAY = { r = 1, g = 0.5, b = 0, colorNameByClass = true } }
+Equal(
+	Read({ colors = true }).colors,
+	{ SAY = { r = 1, g = 0.5, b = 0, classColoredNames = true } },
+	"a plain ChatTypeInfo wasn't read"
+)
+UseRecording()
 
 -- Categories that are turned off
 

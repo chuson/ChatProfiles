@@ -9,4 +9,5 @@
 ChatSettings.lua
 ExportString.lua
 Profiles.lua
+PanelText.lua
 OptionsPanel.lua

@@ -1,29 +1,10 @@
 -- The options panel. It's under Esc > Options > AddOns > ChatProfiles, and /chatprofiles or /chatp opens it too.
 
 local _, ns = ...
-local Profiles, ExportString = ns.Profiles, ns.ExportString
+local Profiles, ExportString, PanelText = ns.Profiles, ns.ExportString, ns.PanelText
 
 local LEFT_MARGIN = 16
 local CONTENT_WIDTH = 600
-local MAX_DETAIL_LINES = 8
-local CATEGORIES = {
-	{
-		key = "tabs",
-		label = "Tabs",
-		description = "Which tabs you have, their order, the position of undocked tabs, and whether each tab is locked",
-	},
-	{
-		key = "messagesAndChannels",
-		label = "Message filters",
-		description = "Which messages and channels each tab shows",
-	},
-	{
-		key = "fontAndBackground",
-		label = "Font and background",
-		description = "Text size, background color, and background opacity",
-	},
-	{ key = "colors", label = "Chat colors", description = "Colors for all message types" },
-}
 
 local panel = CreateFrame("Frame")
 -- New frames start shown. SettingsPanelMixin:DisplayLayout reparents the panel into a canvas that
@@ -54,58 +35,8 @@ local function FitContent()
 	end
 end
 
-local function StatusText(name, applyFailed, changes)
-	if not name then
-		return "This character isn't using a profile."
-	elseif applyFailed then
-		return "Some settings couldn't be applied, so changes won't be saved until you reload or log in again."
-	elseif #changes == 0 then
-		return "Your chat settings match the profile."
-	elseif #changes == 1 then
-		return "1 unsaved change. It will be saved when you log out."
-	end
-	return #changes .. " unsaved changes. They'll be saved when you log out."
-end
-
-local function DetailText(changes, duplicateTabNames)
-	local lines = {}
-	for i = 1, math.min(#changes, MAX_DETAIL_LINES) do
-		table.insert(lines, changes[i].text)
-	end
-	if #changes > MAX_DETAIL_LINES then
-		table.insert(lines, "...and " .. (#changes - MAX_DETAIL_LINES) .. " more")
-	end
-	if #duplicateTabNames > 0 then
-		local names = table.concat(duplicateTabNames, ", ")
-		table.insert(lines, "Only the first tab with each of these names is used: " .. names)
-	end
-	return table.concat(lines, "\n")
-end
-
--- Everything the next save would store: checkbox changes first, then each setting that differs.
--- Both are nil when this character has no profile.
-local function UnsavedChanges()
-	local differences, duplicateTabNames = Profiles.Differences()
-	if not differences then
-		return nil
-	end
-	local changes = {}
-	local categoryChanges = Profiles.UnsavedCategoryChanges()
-	for _, category in ipairs(CATEGORIES) do
-		local on = categoryChanges[category.key]
-		if on ~= nil then
-			table.insert(changes, { text = category.label .. (on and " turned on" or " turned off") })
-		end
-	end
-	for _, difference in ipairs(differences) do
-		table.insert(changes, difference)
-	end
-	return changes, duplicateTabNames
-end
-
 local function Refresh()
 	local name, profile = Profiles.Selected()
-	local applyFailed = Profiles.LastApplyFailed()
 	local categories = Profiles.Categories()
 
 	-- The dropdown doesn't notice profile changes on its own.
@@ -122,10 +53,10 @@ local function Refresh()
 	widgets.export:SetEnabled(profile ~= nil)
 	widgets.saveNow:SetEnabled(Profiles.CanSave())
 
-	local changes, duplicateTabNames = UnsavedChanges()
-	widgets.status:SetText(StatusText(name, applyFailed, changes))
-	widgets.details:SetText(DetailText(changes or {}, duplicateTabNames or {}))
-	widgets.UpdateExport()
+	local changes, duplicateTabNames = PanelText.UnsavedChanges()
+	widgets.status:SetText(PanelText.Status(name, changes))
+	widgets.details:SetText(PanelText.Details(changes or {}, duplicateTabNames or {}))
+	widgets.UpdateExport(changes)
 	FitContent()
 end
 
@@ -324,7 +255,7 @@ local function BuildCategorySection(anchor)
 	local line = SectionHeading("Saved in this profile", anchor)
 	widgets.checkboxes = {}
 	local previous
-	for _, category in ipairs(CATEGORIES) do
+	for _, category in ipairs(PanelText.CATEGORIES) do
 		local checkbox = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 		if previous then
 			checkbox:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -6)
@@ -411,18 +342,10 @@ local function BuildSharingSection(anchor)
 		FitContent()
 	end
 
-	local function ExportHint()
-		local hintText = "Control + C to copy"
-		if #UnsavedChanges() > 0 then
-			hintText = hintText .. "  ·  " .. RED_FONT_COLOR:WrapTextInColorCode("Save now to include your changes")
-		end
-		return hintText
-	end
-
 	widgets.export:SetScript("OnClick", function()
 		local _, profile = Profiles.Selected()
 		-- Addons can't write to the clipboard, so select the text for the player to copy.
-		ShowPasteBox("export", ExportString.Export(profile), ExportHint())
+		ShowPasteBox("export", ExportString.Export(profile), PanelText.ExportHint(PanelText.UnsavedChanges()))
 		pasteBox.EditBox:HighlightText()
 	end)
 	import:SetScript("OnClick", function()
@@ -431,7 +354,7 @@ local function BuildSharingSection(anchor)
 
 	-- Called on every Refresh, so an open export follows saves and profile switches. The text is
 	-- only replaced when it changes, since replacing it clears the player's selection.
-	function widgets.UpdateExport()
+	function widgets.UpdateExport(changes)
 		if widgets.pasteMode ~= "export" then
 			return
 		end
@@ -447,7 +370,7 @@ local function BuildSharingSection(anchor)
 			pasteBox.EditBox:SetFocus()
 			pasteBox.EditBox:HighlightText()
 		end
-		pasteHint:SetText(ExportHint())
+		pasteHint:SetText(PanelText.ExportHint(changes))
 	end
 end
 

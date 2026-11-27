@@ -15,6 +15,7 @@ ChatProfiles rewrites a player's chat every time they log in, so a broken change
 | `ChatSettings.lua` | Reads the live chat settings, compares them with a profile, applies a profile. | Prints, or touches saved data. |
 | `ExportString.lua` | Builds export strings and checks imported ones. | Uses game APIs other than `C_EncodingUtil`, `Constants` and `ChatTypeInfo`, so the tests can stand in for them. |
 | `Profiles.lua` | Owns the saved data (`ChatProfilesDB`), the login apply and the logout save. | Builds UI. |
+| `PanelText.lua` | The panel's status line, list of changes and export hint. | Builds frames. Keeping them out lets the tests check it. |
 | `OptionsPanel.lua` | The options panel and slash commands. | Changes chat settings or saved data itself; it goes through `Profiles`. |
 
 Each file only uses the ones above it.
@@ -31,12 +32,20 @@ WoW uses three words for chat windows, and the code keeps them apart: a **tab** 
 
 ## Testing
 
-Run `lua tests/run.lua` from the repository root.
+Run `lua tests/run.lua` from the repository root. Each test file runs in its own Lua process, so stand-ins one file sets up can't leak into another. To run one file, pass it: `lua tests/run.lua tests/Profiles.lua`.
 
 - `tests/ExportString.lua` covers reading pasted text, exporting, and the import checks.
-- `tests/ChatSettings.lua` covers what `Diff` reports and the game calls each change makes, and checks `Read` against a recording of a real client.
+- `tests/ChatSettings.lua` covers what `Diff` reports and the game calls each change makes, the order `Apply` makes changes in and what it returns, and checks `Read` against a recording of a real client.
+- `tests/Profiles.lua` covers when saves happen and when they're skipped, unsaved changes and checkboxes, switching, names, and the login apply in combat. It replaces `ChatSettings` with a stand-in, so it tests `Profiles` alone.
+- `tests/PanelText.lua` covers the panel's status line, list of changes and export hint.
+- `tests/Apply.lua` applies profiles to `tests/FakeChat.lua`, a working model of the client's chat windows and dock, and checks nothing differs afterward: for chosen layouts, then 500 random ones from a fixed seed. The model follows Blizzard's `FloatingChatFrame.lua`; its header lists what it copies. When the client changes how docking works, update the model first.
+- `tests/WholePath.lua` runs the real `Profiles`, `ChatSettings` and `ExportString` together over the model: saving on one character, applying on another, and moving a profile through an export string.
 
 A rejection test also checks the reason, and every limit is tested from both sides.
+
+The Checks workflow also runs [luacheck](https://github.com/lunarmodules/luacheck), configured in `.luacheckrc`. To run it yourself, install it with `luarocks install luacheck` (Windows has a standalone `luacheck.exe` on its releases page), then run `luacheck .` from the repository root.
+
+To see which lines of the addon the tests reach, install [luacov](https://github.com/lunarmodules/luacov) with `luarocks install luacov`, then run `lua -lluacov tests/run.lua` followed by `luacov`. The report is in `luacov.report.out`, and lines no test reached are marked `*****0`. If Lua can't find luacov, set the paths `luarocks path` prints. luacov counts lines, not branches, so a line can be covered while one side of its `and` or `or` never ran.
 
 Applying a profile, switching profiles and the panel can only be tested in game. Before sending a change, try it with a `/reload`, a full logout and login, and a switch to another profile and back. Section 11 of the design doc lists the full checks.
 

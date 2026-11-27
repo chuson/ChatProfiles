@@ -1,0 +1,5 @@
+-- Settings for luacov, the coverage tool. See CONTRIBUTING.md for how to run it.
+return {
+	-- Count the addon's own lines, not the tests'.
+	include = { "^ChatProfiles/" },
+}

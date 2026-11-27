@@ -12,7 +12,7 @@ globals = {
 
 -- Game APIs in use. Check each new one against Blizzard's UI source and in game first
 -- (see CONTRIBUTING.md).
-read_globals = {
+local GAME_APIS = {
 	"C_ChatInfo",
 	"C_EncodingUtil",
 	"C_Timer",
@@ -53,27 +53,16 @@ read_globals = {
 	"strlenutf8",
 }
 
--- The tests set up their own stand-ins for game globals.
-files["tests/ExportString.lua"] = {
-	globals = { "Constants", "ChatTypeInfo", "C_EncodingUtil" },
-}
+read_globals = GAME_APIS
+
+-- The tests replace the game with stand-ins, and each test file runs in its own Lua process, so
+-- they may set any game API. They also set chat types' display names, and swap print to keep
+-- what the addon prints.
+local testGlobals = { "SAY", "GUILD", "print" }
+for _, name in ipairs(GAME_APIS) do
+	table.insert(testGlobals, name)
+end
+files["tests/**/*.lua"] = { globals = testGlobals }
+
 -- The recording converter runs outside the game, with its command-line arguments in `arg`.
-files["tests/record-fixture.lua"] = {
-	read_globals = { "arg" },
-}
-files["tests/ChatSettings.lua"] = {
-	globals = {
-		"Constants",
-		"C_ChatInfo",
-		"ChatTypeInfo",
-		"GetChatWindowInfo",
-		"GetChatWindowMessages",
-		"GetChatWindowChannels",
-		"GetChatWindowSavedPosition",
-		"GetChatWindowSavedDimensions",
-		"GENERAL_CHAT_DOCK",
-		"FCFDock_GetSelectedWindow",
-		"SAY",
-		"GUILD",
-	},
-}
+files["tests/record-fixture.lua"] = { read_globals = { "arg" } }

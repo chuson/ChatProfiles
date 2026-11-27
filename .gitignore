@@ -6,6 +6,10 @@
 build/
 *.zip
 
+# Coverage output from luacov.
+luacov.stats.out
+luacov.report.out
+
 # Files the operating system leaves behind.
 .DS_Store
 Thumbs.db

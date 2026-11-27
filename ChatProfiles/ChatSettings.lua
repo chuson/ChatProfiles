@@ -189,11 +189,16 @@ local function SameSize(have, want)
 	return math.abs(have.width - want.width) < 0.5 and math.abs(have.height - want.height) < 0.5
 end
 
+-- Apply makes changes in three passes, comparing again before each one.
+local OPEN_OR_CLOSE_PASS = 1 -- a tab has to exist before its settings can change
+local UNDOCK_PASS = 2 -- a tab is docked at an index that counts only the tabs that stay docked
+local LAST_PASS = 3
+
 -- A setting the profile doesn't have (nil) is left alone. So is font size 0, which means it
 -- was never set. `dockIndex` is where the tab goes if it has to be docked.
 local function DiffWindow(frame, have, want, categories, dockIndex, addDifference)
-	local function Add(text, apply)
-		addDifference(have.name .. ": " .. text, apply)
+	local function Add(text, apply, pass)
+		addDifference(have.name .. ": " .. text, apply, pass)
 	end
 
 	if categories.tabs then
@@ -210,7 +215,7 @@ local function DiffWindow(frame, have, want, categories, dockIndex, addDifferenc
 					FCF_SetTabPosition(frame, 0)
 					FCF_CheckShowChatFrame(frame)
 					FCF_CheckShowChatFrame(_G[frame:GetName() .. "Tab"])
-				end)
+				end, UNDOCK_PASS)
 			end
 		end
 		-- A tab that was just docked or undocked has no position read yet, so it counts as moved.
@@ -331,19 +336,15 @@ local function RedockInOrder(frames, firstIndex)
 	end
 end
 
--- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
--- says how the live settings differ from the profile, and `apply` makes them match. The panel
--- shows the text, and Apply runs the same entries, so the two can't disagree. `categories`
--- narrows the comparison, and defaults to the profile's own.
+-- Returns a list of { text, apply, pass }, one per setting that differs. `text` says how the
+-- live settings differ from the profile, and `apply` makes them match. The panel shows the text,
+-- and Apply runs the same entries, so the two can't disagree. `pass` is when Apply runs it.
+-- `categories` narrows the comparison, and defaults to the profile's own.
 function ChatSettings.Diff(live, profile, categories)
 	categories = categories or profile.categories
 	local differences = {}
-	local function AddDifference(text, apply)
-		table.insert(differences, { text = text, apply = apply })
-	end
-	-- Apply runs these first, so a tab exists before its settings are changed.
-	local function AddTabChange(text, apply)
-		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = true })
+	local function AddDifference(text, apply, pass)
+		table.insert(differences, { text = text, apply = apply, pass = pass or LAST_PASS })
 	end
 
 	-- General and Combat Log are static tabs (isStaticDocked): the dock always draws them first,
@@ -378,9 +379,9 @@ function ChatSettings.Diff(live, profile, categories)
 		for _, have in ipairs(live.windows) do
 			if IsCustomKey(have.key) and not wanted[have.key] then
 				local frame = _G["ChatFrame" .. live.windowNumbers[have.key]]
-				AddTabChange('Extra tab "' .. have.name .. '"', function()
+				AddDifference('Extra tab "' .. have.name .. '"', function()
 					FCF_Close(frame)
-				end)
+				end, OPEN_OR_CLOSE_PASS)
 			end
 		end
 	end
@@ -407,7 +408,8 @@ function ChatSettings.Diff(live, profile, categories)
 			for i, key in ipairs(wantOrder) do
 				frames[i] = _G["ChatFrame" .. live.windowNumbers[key]]
 			end
-			-- Live state, not the profile's: this runs before the Combat Log's own dock change.
+			-- Live state, not the profile's: by the second pass the Combat Log has been undocked if
+			-- it's going to be, but isn't docked yet.
 			local liveCombatLog = liveByKey[combatLog]
 			local firstIndex = (liveCombatLog and liveCombatLog.docked) and 3 or 2
 			AddDifference("Tabs in a different order", function()
@@ -422,9 +424,9 @@ function ChatSettings.Diff(live, profile, categories)
 			local frame = _G["ChatFrame" .. live.windowNumbers[want.key]]
 			DiffWindow(frame, have, want, categories, dockIndex[want.key], AddDifference)
 		elseif categories.tabs and IsCustomKey(want.key) then
-			AddTabChange('Missing tab "' .. want.name .. '"', function()
-				FCF_OpenNewWindow(want.name, true) -- noDefaultChannels; the second pass adds the profile's own
-			end)
+			AddDifference('Missing tab "' .. want.name .. '"', function()
+				FCF_OpenNewWindow(want.name, true) -- noDefaultChannels; the last pass adds the profile's own
+			end, OPEN_OR_CLOSE_PASS)
 		end
 	end
 
@@ -442,9 +444,9 @@ end
 -- functions fail silently. Each change gets its own pcall so one failure doesn't stop the rest.
 function ChatSettings.Apply(profile)
 	local firstError
-	local function ApplyDifferences(include)
+	for pass = OPEN_OR_CLOSE_PASS, LAST_PASS do
 		for _, difference in ipairs(ChatSettings.Diff(ChatSettings.Read(profile.categories), profile)) do
-			if include(difference) then
+			if difference.pass == pass then
 				local ok, err = pcall(difference.apply)
 				if not ok then
 					firstError = firstError or err
@@ -452,14 +454,5 @@ function ChatSettings.Apply(profile)
 			end
 		end
 	end
-
-	-- A tab has to exist before its font or channels can be set, so open and close tabs
-	-- first, then compare again and do the rest.
-	ApplyDifferences(function(difference)
-		return difference.opensOrClosesTab
-	end)
-	ApplyDifferences(function(difference)
-		return not difference.opensOrClosesTab
-	end)
 	return ChatSettings.Diff(ChatSettings.Read(profile.categories), profile), firstError
 end
