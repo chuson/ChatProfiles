@@ -6,7 +6,7 @@ ChatProfiles rewrites a player's chat every time they log in, so a broken change
 
 - Copy or link `ChatProfiles/` into your WoW Forever `Interface\AddOns` folder.
 - In VS Code, install the recommended extensions (Lua language server, Ketho's WoW API, StyLua). They catch unknown APIs and format on save.
-- Install Lua 5.1 or later to run the tests. GitHub also runs them, with luacheck, on every push and pull request.
+- Install Lua 5.1 or later to run the tests. GitHub runs them and [luacheck](https://github.com/lunarmodules/luacheck) on every push and pull request. To run luacheck yourself, install it with `luarocks install luacheck` and run `luacheck .`.
 
 ## Layout
 
@@ -32,22 +32,11 @@ WoW uses three words for chat windows, and the code keeps them apart: a **tab** 
 
 ## Testing
 
-Run `lua tests/run.lua` from the repository root. Each test file runs in its own Lua process, so stand-ins one file sets up can't leak into another. To run one file, pass it: `lua tests/run.lua tests/Profiles.lua`.
-
-- `tests/ExportString.lua` covers reading pasted text, exporting, and the import checks.
-- `tests/ChatSettings.lua` covers what `Diff` reports and the game calls each change makes, the order `Apply` makes changes in and what it returns, and checks `Read` against a recording of a real client.
-- `tests/Profiles.lua` covers when saves happen and when they're skipped, unsaved changes and checkboxes, switching, names, and the login apply in combat. It replaces `ChatSettings` with a stand-in, so it tests `Profiles` alone.
-- `tests/PanelText.lua` covers the panel's status line, list of changes and export hint.
-- `tests/Apply.lua` applies profiles to `tests/FakeChat.lua`, a working model of the client's chat windows and dock, and checks nothing differs afterward: for chosen layouts, then 500 random ones from a fixed seed. The model follows Blizzard's `FloatingChatFrame.lua`; its header lists what it copies. When the client changes how docking works, update the model first.
-- `tests/WholePath.lua` runs the real `Profiles`, `ChatSettings` and `ExportString` together over the model: saving on one character, applying on another, and moving a profile through an export string.
+Run `lua tests/run.lua` from the repository root, or `lua tests/run.lua tests/Profiles.lua` for one file. Each module has its own test file. Two more, `tests/Apply.lua` and `tests/WholePath.lua`, apply profiles to `tests/FakeChat.lua`, a working model of the client's chat windows and dock, and check that nothing differs afterward. The model copies Blizzard's `FloatingChatFrame.lua`, and its header lists what it copies. If the client changes how docking works, update the model first.
 
 A rejection test also checks the reason, and every limit is tested from both sides.
 
-The Checks workflow also runs [luacheck](https://github.com/lunarmodules/luacheck), configured in `.luacheckrc`. To run it yourself, install it with `luarocks install luacheck` (Windows has a standalone `luacheck.exe` on its releases page), then run `luacheck .` from the repository root.
-
-To see which lines of the addon the tests reach, install [luacov](https://github.com/lunarmodules/luacov) with `luarocks install luacov`, then run `lua -lluacov tests/run.lua` followed by `luacov`. The report is in `luacov.report.out`, and lines no test reached are marked `*****0`. If Lua can't find luacov, set the paths `luarocks path` prints. luacov counts lines, not branches, so a line can be covered while one side of its `and` or `or` never ran.
-
-Applying a profile, switching profiles and the panel can only be tested in game. Before sending a change, try it with a `/reload`, a full logout and login, and a switch to another profile and back. Section 11 of the design doc lists the full checks.
+The tests can't show that the client really behaves the way the stand-ins do. Before sending a change, try it in game with a `/reload`, a full logout and login, and a switch to another profile and back. Section 11 of the design doc lists the full checks.
 
 ### Recording the chat client
 
@@ -87,14 +76,5 @@ You're the author of anything you submit, however it was written. That means:
 I'm happy to look at pull requests, though I can't promise to merge every one. For anything larger, it's worth opening an issue first so we can agree on the approach.
 
 - Keep each pull request to one change, and say what you tested.
-- Review it one area at a time: architecture, size, order, naming, comments, correctness, efficiency.
+- Before sending it, read your own diff one area at a time: architecture, size, order, naming, comments, correctness, efficiency.
 - If behavior changes, update the design doc to match.
-
-## Releasing
-
-1. Set `## Version` in `ChatProfiles/ChatProfiles.toc` (for example `0.2.0`) and commit it.
-2. Tag that commit with the same version and push the tag: `git tag v0.2.0` then `git push origin v0.2.0`. A suffix like `v0.2.0-beta1` makes a pre-release.
-
-Each version is released exactly once. The release workflow stops if the tag isn't shaped like `v1.2.3`, doesn't match the `.toc`, or is already released, and the Checks workflow warns when the addon changes after its version was released. Released tags can't be deleted or moved (a GitHub tag ruleset on `v*`).
-
-After those checks, the release workflow runs luacheck and the tests, and publishes `ChatProfiles-v0.2.0.zip` (the addon folder with `LICENSE`) and a `release.json` to GitHub Releases. Addon managers such as WowUp install and update from there.

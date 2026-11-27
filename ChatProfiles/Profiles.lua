@@ -337,8 +337,8 @@ events:SetScript("OnEvent", function(self, event, loadedAddon)
 		self:UnregisterEvent(event)
 		-- On a fresh login, chat settings are still arriving from the server around ADDON_LOADED
 		-- and would overwrite anything applied then. They have all arrived by PLAYER_LOGIN, as
-		-- measured for open question 1 in the design doc. Deferring with After(0) lets other addons'
-		-- login code run first.
+		-- measured for question 1 in section 10 of the design doc. Deferring with After(0) lets
+		-- other addons' login code run first.
 		C_Timer.After(0, ApplyAtLogin)
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		-- Combat has ended after a login apply was put off.

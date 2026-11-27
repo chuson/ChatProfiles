@@ -1,4 +1,5 @@
--- Settings for luacov, the coverage tool. See CONTRIBUTING.md for how to run it.
+-- Settings for luacov, if you use it to see which lines the tests reach:
+-- lua -lluacov tests/run.lua, then luacov.
 return {
 	-- Count the addon's own lines, not the tests'.
 	include = { "^ChatProfiles/" },

@@ -2,8 +2,8 @@
 -- that nothing differs afterward. The other tests record which game calls a change makes; this
 -- one checks that those calls, made in order, have the intended effect.
 --
--- It follows Blizzard's FloatingChatFrame.lua (12.1.5) and the design doc's open questions 3, 4
--- and 7:
+-- It follows Blizzard's FloatingChatFrame.lua (12.1.5), and questions 3, 4 and 7 in section 10
+-- of the design doc:
 -- - FCF_OpenNewWindow takes the first custom window that's neither shown nor docked, resets its
 --   colors and clears its groups and channels (noDefaultChannels), unlocks it, then docks it at
 --   the end and selects it. Docking locks it again.
