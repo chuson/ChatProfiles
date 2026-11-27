@@ -64,11 +64,14 @@ local function ShowError(text)
 	UIErrorsFrame:AddMessage(text, RED_FONT_COLOR:GetRGB())
 end
 
--- If some settings don't apply, the status line says so and lists them.
+-- If some settings don't apply, the status line says so and lists them, and the first error a
+-- change raised goes to chat, as it does at login.
 local function SwitchProfile(name)
-	local remaining, reason = Profiles.Select(name)
+	local remaining, message = Profiles.Select(name)
 	if not remaining then
-		ShowError(reason)
+		ShowError(message) -- why the switch was refused
+	elseif #remaining > 0 and message then
+		print("ChatProfiles: The first error was: " .. tostring(message))
 	end
 	Refresh()
 end

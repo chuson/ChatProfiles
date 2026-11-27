@@ -205,8 +205,8 @@ function Profiles.WouldLoseUnsavedSettings(name)
 	return true
 end
 
--- Applies a profile. Pass nil to use no profile. Returns what did not apply, or nil and a reason
--- if the switch can't happen now.
+-- Applies a profile. Pass nil to use no profile. Returns what did not apply and the first error a
+-- change raised, or nil and a reason if the switch can't happen now.
 --
 -- Unsaved changes are discarded, not saved into the old profile: switching away with Save now
 -- available means the player chose not to keep them, and the old profile stays as last saved.

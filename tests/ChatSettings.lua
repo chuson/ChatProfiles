@@ -254,6 +254,7 @@ local undockChanges = ExpectDiff(
 		"FCF_SetTabPosition ChatFrame4 0",
 		"FCF_CheckShowChatFrame ChatFrame4",
 		"FCF_CheckShowChatFrame ChatFrame4Tab",
+		"FCF_RestorePositionAndDimensions ChatFrame4",
 		"SetChatWindowSavedPosition 4 TOPLEFT 0.1 -0.25",
 		"FCF_RestorePositionAndDimensions ChatFrame4",
 		"SetChatWindowSavedDimensions 4 430 120",
@@ -299,6 +300,7 @@ ExpectDiff(
 		"FCF_SetTabPosition ChatFrame4 0",
 		"FCF_CheckShowChatFrame ChatFrame4",
 		"FCF_CheckShowChatFrame ChatFrame4Tab",
+		"FCF_RestorePositionAndDimensions ChatFrame4",
 	}
 )
 ExpectDiff(
@@ -377,6 +379,7 @@ ExpectDiff(
 		"FCF_SetTabPosition ChatFrame4 0",
 		"FCF_CheckShowChatFrame ChatFrame4",
 		"FCF_CheckShowChatFrame ChatFrame4Tab",
+		"FCF_RestorePositionAndDimensions ChatFrame4",
 	}
 )
 ExpectDiff(
@@ -445,6 +448,7 @@ ExpectDiff(
 		"FCF_SetTabPosition ChatFrame2 0",
 		"FCF_CheckShowChatFrame ChatFrame2",
 		"FCF_CheckShowChatFrame ChatFrame2Tab",
+		"FCF_RestorePositionAndDimensions ChatFrame2",
 		"SetChatWindowSavedPosition 2 TOPLEFT 0.1 -0.25",
 		"FCF_RestorePositionAndDimensions ChatFrame2",
 		"SetChatWindowSavedDimensions 2 430 120",

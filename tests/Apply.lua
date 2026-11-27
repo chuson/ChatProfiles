@@ -64,18 +64,20 @@ local function ProfileOf(to, categories)
 	return { categories = categories, windows = live.windows, colors = live.colors }
 end
 
--- Sets the client up as `from` and applies a profile saved from `to`. Returns what still differs.
+-- Sets the client up as `from` and applies a profile saved from `to`. Returns what still differs,
+-- the first error, and the undocked windows that aren't drawn where they're saved.
 local function ApplyTo(from, to, categories)
 	local profile = ProfileOf(to, categories or ALL_CATEGORIES)
 	FakeChat.Load(from)
 	local remaining, firstError = ChatSettings.Apply(profile)
-	return Texts(remaining), firstError
+	return Texts(remaining), firstError, FakeChat.Misplaced()
 end
 
 local function ExpectApplies(description, from, to, categories)
-	local remaining, firstError = ApplyTo(from, to, categories)
+	local remaining, firstError, misplaced = ApplyTo(from, to, categories)
 	Equal(remaining, {}, description .. ": differences remain after applying")
 	Check(firstError == nil, description .. ": a change raised an error: " .. tostring(firstError))
+	Equal(misplaced, {}, description .. ": undocked windows aren't drawn at their saved position")
 end
 
 -- Chosen layouts
@@ -120,6 +122,23 @@ ExpectApplies(
 	{ windows = { General(), Docked("party"), Docked("trade") } },
 	{ windows = { General(), Docked("trade"), Undocked(Tab("party")) } }
 )
+-- Each tab keeps its saved position while docked, so the profile's matches before it's undocked.
+local function SavedAt(xOffset)
+	return { point = "TOPLEFT", xOffset = xOffset, yOffset = -0.25, width = 430, height = 120 }
+end
+ExpectApplies("undocking every tab to positions it already has saved", {
+	windows = {
+		General(),
+		CombatLog(WithFields(helpers.DeepCopy(DOCKED), SavedAt(0.2))),
+		Docked("party", SavedAt(0.3)),
+	},
+}, {
+	windows = {
+		General(),
+		CombatLog(WithFields(SavedAt(0.2), { docked = false })),
+		Tab("party", WithFields(SavedAt(0.3), { docked = false })),
+	},
+})
 ExpectApplies(
 	"closing every tab",
 	{ windows = { General(), Docked("party"), Undocked(Tab("trade")) } },
@@ -188,15 +207,24 @@ local function RandomSettings(window)
 	return window
 end
 
+-- Positions come from a small set, so a tab is often undocked to the position it already has
+-- saved. A docked tab keeps its saved position, so it may have one too.
+local function RandomPosition(window)
+	window.point = POINTS[Random(2)]
+	window.xOffset, window.yOffset = Random(3) / 10, -0.25
+	window.width, window.height = 430, 100 + 20 * Random(2)
+end
+
 local function RandomlyUndocked(window)
 	if Chance() then
 		window.docked, window.locked = true, true
+		if Chance() then
+			RandomPosition(window)
+		end
 		return window, true
 	end
 	window.docked = false
-	window.point = POINTS[Random(#POINTS)]
-	window.xOffset, window.yOffset = Random(100) / 200, -Random(100) / 200
-	window.width, window.height = 200 + Random(300), 100 + Random(200)
+	RandomPosition(window)
 	return window, false
 end
 
@@ -241,13 +269,15 @@ local CASES = 500
 local failedCases = 0
 for case = 1, CASES do
 	local from, to, categories = RandomSetup(), RandomSetup(), RandomCategories()
-	local remaining, firstError = ApplyTo(from, to, categories)
-	if #remaining > 0 or firstError then
+	local remaining, firstError, misplaced = ApplyTo(from, to, categories)
+	if #remaining > 0 or firstError or #misplaced > 0 then
 		failedCases = failedCases + 1
 		-- The first few are enough to debug from, and the count says how widespread it is.
 		if failedCases <= 3 then
-			Equal(remaining, {}, "random case " .. case .. ": differences remain after applying")
-			Check(firstError == nil, "random case " .. case .. ": a change raised an error: " .. tostring(firstError))
+			local name = "random case " .. case
+			Equal(remaining, {}, name .. ": differences remain after applying")
+			Check(firstError == nil, name .. ": a change raised an error: " .. tostring(firstError))
+			Equal(misplaced, {}, name .. ": undocked windows aren't drawn at their saved position")
 		end
 	end
 end

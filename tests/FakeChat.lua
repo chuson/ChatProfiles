@@ -17,6 +17,8 @@
 --   is that order. It draws General and the Combat Log first (isStaticDocked), but that doesn't
 --   change the order.
 -- - Unlocking a docked tab undocks it, so only General can be docked and unlocked.
+-- - A docked frame is drawn over General. Undocking leaves it there, and only
+--   FCF_RestorePositionAndDimensions moves it to its saved position and size.
 -- - Colors and opacity are stored as 0-255, so they read back rounded.
 
 local helpers = dofile("tests/helpers.lua")
@@ -66,6 +68,7 @@ local function Dock(windowNumber, index)
 	end
 	Select(selected)
 	windows[windowNumber].locked = true
+	windows[windowNumber].drawnAt = "dock"
 end
 
 local function Undock(windowNumber)
@@ -98,7 +101,12 @@ local function NewWindow(name)
 		channels = {},
 		position = { "TOPLEFT", 0, 0 },
 		size = { 430, 120 },
+		drawnAt = "dock", -- or the position and size it was last restored to
 	}
+end
+
+local function SavedPlace(w)
+	return { w.position[1], w.position[2], w.position[3], w.size[1], w.size[2] }
 end
 
 -- Zone channels are added by their local name and reported with their ID.
@@ -233,7 +241,13 @@ function FakeChat.Install()
 		end
 	end
 	function FCF_SetTabPosition() end
-	function FCF_RestorePositionAndDimensions() end
+	-- Skips General, whose position belongs to Edit Mode.
+	function FCF_RestorePositionAndDimensions(frame)
+		local windowNumber = NumberOf(frame)
+		if windowNumber ~= GENERAL then
+			windows[windowNumber].drawnAt = SavedPlace(windows[windowNumber])
+		end
+	end
 	function FCF_SetLocked(frame, locked)
 		windows[NumberOf(frame)].locked = locked
 	end
@@ -301,6 +315,7 @@ function FakeChat.Load(setup)
 		w.locked = window.locked or false
 		if window.docked == false then
 			w.shown = true
+			w.drawnAt = SavedPlace(w)
 		else
 			-- A setup the client can't be in would make the tests prove nothing.
 			assert(w.locked or windowNumber == GENERAL, window.name .. " is docked but unlocked")
@@ -330,6 +345,22 @@ end
 -- The docked windows' numbers, in the order the dock draws them.
 function FakeChat.Dock()
 	return helpers.DeepCopy(dock)
+end
+
+-- The names of open undocked windows that aren't drawn at their saved position and size. The
+-- client reports only the saved values, so a window can match its profile and still sit over
+-- General.
+function FakeChat.Misplaced()
+	local names = {}
+	for windowNumber, w in ipairs(windows) do
+		if w.shown and not IndexOf(dock, windowNumber) then
+			local drawnAt = w.drawnAt == "dock" and "dock" or table.concat(w.drawnAt, " ")
+			if drawnAt ~= table.concat(SavedPlace(w), " ") then
+				table.insert(names, w.name)
+			end
+		end
+	end
+	return names
 end
 
 return FakeChat

@@ -215,10 +215,14 @@ local function DiffWindow(frame, have, want, categories, dockIndex, addDifferenc
 					FCF_SetTabPosition(frame, 0)
 					FCF_CheckShowChatFrame(frame)
 					FCF_CheckShowChatFrame(_G[frame:GetName() .. "Tab"])
+					-- An undocked frame stays where the dock put it, over General
+					-- (FCFDock_AddChatFrame anchors it there). The tab kept its saved position while
+					-- docked, so the last pass may find nothing to change and never move it.
+					FCF_RestorePositionAndDimensions(frame)
 				end, UNDOCK_PASS)
 			end
 		end
-		-- A tab that was just docked or undocked has no position read yet, so it counts as moved.
+		-- A tab that's docked has no position read, so one about to be undocked counts as moved.
 		if want.docked == false and want.point and (not have.point or not SamePosition(have, want)) then
 			Add("different position", function()
 				SetChatWindowSavedPosition(frame:GetID(), want.point, want.xOffset, want.yOffset)
