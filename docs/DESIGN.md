@@ -75,7 +75,7 @@ A window entry holds:
 - With Font and background on: `fontSize`, `r`, `g`, `b`, `a`.
 - With Message filters on: a sorted array `messageGroups`, and an array `channels` of `{ name, zoneChannelID }` sorted by name.
 
-The list holds tabs, but it's called `windows` because that's the client's word. Docked tabs come first, in dock order, then undocked tabs by window number, so a tab's place in the list gives its place in the dock. A field added later needs no migration, because an older profile that lacks it leaves that setting alone; a profile saved before `docked` existed leaves every tab where it is. A profile's `colors` maps each `ChatTypeInfo` key to `r`, `g`, `b` and `classColoredNames`.
+The list holds tabs, but it's called `windows` because that's the client's word. Docked tabs come first, in dock order, then undocked tabs by window number, so a tab's place in the list gives its place in the dock. Profiles saved by any released version must keep working, unless a release announces a breaking change in its notes. A setting a profile lacks is left alone, so a new optional field needs no migration. A profile's `colors` maps each `ChatTypeInfo` key to `r`, `g`, `b` and `classColoredNames`.
 
 - Profiles are keyed by name. The `profileByCharacter` table is account-wide, so rename updates every reference in one loop, and delete detaches the characters that used the profile.
 - Character keys are `UnitName("player") .. "-" .. GetNormalizedRealmName()`. On Forever the realm name is empty, so keys look like `"Name-"`. Forever character names are unique across the game, so the empty realm can't cause a collision. Other game versions get the usual `"Name-Realm"`, and each version keeps its own saved variables, so keys from different versions never meet.
@@ -89,7 +89,7 @@ The list holds tabs, but it's called `windows` because that's the client's word.
 
 ### Setting categories
 
-Each profile stores which categories it manages (`categories`). A category that's turned off is neither applied nor saved, so the character, or another addon, keeps control of it. Checkbox changes are unsaved changes like any other: the panel lists them, the next save (Save now or logout) stores them, and switching profiles discards them. Turning a category off drops its saved data only when that save happens, so an abandoned change leaves the profile as it was. A profile always keeps at least one category on. With every box unchecked, the panel shows a warning in red, disables Save now, and saving is skipped, so the profile keeps its last saved selection. Imports with none on are rejected, and saved variables that have a profile with none on (possible in 0.1.1) get all four turned back on when they load. The panel shows each one with a short description.
+Each profile stores which categories it manages (`categories`). A category that's turned off is neither applied nor saved, so the character, or another addon, keeps control of it. Checkbox changes are unsaved changes like any other: the panel lists them, the next save (Save now or logout) stores them, and switching profiles discards them. Turning a category off drops its saved data only when that save happens, so an abandoned change leaves the profile as it was. A profile always keeps at least one category on. With every box unchecked, the panel shows a warning in red, disables Save now, and saving is skipped, so the profile keeps its last saved selection. Imports with none on are rejected. The panel shows each one with a short description.
 
 | Category | Panel description | Default | Notes |
 | --- | --- | --- | --- |
@@ -115,7 +115,7 @@ Four small files, one shared namespace (`local _, ns = ...`), dependencies in on
 
 ```lua
 ChatSettings.Read(categories)       -- -> live settings: windows, windowNumbers, duplicateTabNames, colors
-ChatSettings.Diff(live, profile)    -- -> { {text=, apply=, opensOrClosesTab=}, ... }   (empty = in sync)
+ChatSettings.Diff(live, profile [, categories])  -- -> { {text=, apply=, opensOrClosesTab=}, ... }   (empty = in sync)
 ChatSettings.Apply(profile)         -- -> remaining differences (empty = success), first error raised
 ```
 
@@ -213,12 +213,12 @@ Sharing
 Behavior:
 
 - The status line reads "This character isn't using a profile.", "Your chat settings match the profile.", "N unsaved changes…", or, after a failed apply, that changes won't be saved until a reload or login. Up to 8 differences are listed below it, followed by any duplicate tab names. The status is worked out when the panel opens, after each of its actions, and when the mouse comes back over the panel. Changing chat settings fires no events (checked in game by listening for every chat-related event), so returning to the panel is the cue that something may have changed.
-- Selecting a profile applies it and discards unsaved changes, so switching away is how to abandon them. In combat, the panel says profiles can't be switched and nothing changes.
+- Selecting a profile applies it and discards unsaved changes, so switching away is how to abandon them. In combat, red text at the top of the screen says profiles can't be switched, and nothing changes.
 - On a character that isn't using a profile, selecting one asks for confirmation in a popup if its chat settings would be lost: they differ from the chosen profile, and from every profile that saves at least the same categories. The popup suggests clicking New first to keep them.
-- Checkbox changes count as unsaved changes and are listed first, for example "Chat colors turned off". While no box is checked, a red line under the checkboxes says changes aren't saved, and Save now is disabled.
+- Checkbox changes count as unsaved changes and are listed first, for example "Chat colors turned off". Only categories that are saved and still checked list their differences, so a category being turned off shows only that line. While no box is checked, a red line under the checkboxes says changes aren't saved, and Save now is disabled.
 - **New** and **Rename** ask for a name in a popup. A rejected name shows the reason at the top of the screen and keeps the popup open. Renaming to the same name just closes it.
 - **Delete** confirms in a popup. Characters using the profile keep their chat settings.
-- **Export** shows the export string in the box, selected for Ctrl+C, since addons can't write to the clipboard. The string is the saved profile. While there are unsaved changes, a red note says to Save now to include them, and an open export updates itself after a save or a profile switch. **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup.
+- **Export** shows the export string in the box, selected for Ctrl+C, since addons can't write to the clipboard. The string is the saved profile. While there are unsaved changes, a red note says to Save now to include them, and an open export updates itself after a save or a profile switch. **Import** shows an empty box and **Add profile**, which checks the string and then asks for a name in the same popup. A rejected string's reason appears in red beside Add profile. Once a profile is added, the hint beside Import says so until the panel is opened again, since nothing else on the panel changes. The panel has no other confirmation messages: New, Rename and Delete show in the menu, and Save now in the status line.
 - Chat settings change only by selecting a profile or through the game's own chat UI. Import adds a profile to the list and nothing else.
 - **Save now** runs the same save as logout, immediately, so the status line and Export reflect the change at once. The client still writes it to disk at the next logout or `/reload`.
 - The saved categories belong to the profile, so every character using it manages the same categories, and export strings carry the saved selection.
@@ -258,7 +258,7 @@ Answers come from Blizzard's 12.1.5 UI source (section 12), in-game checks, a te
 11. **Default channels on window 1.** A character with an untouched setup shows zone channels 1, 2, 22, 32 to 36, 42, 46 and 47 on window 1. Decoding the `ZONECHANNELS` bitmask in each character's `chat-cache.txt` gives exactly the list `GetChatWindowChannels` returns in game.
 12. **Chat color setters.** `ChangeChatColor(type, r, g, b)` and `SetChatColorNameByClass(type, enabled)` both take effect at once, tested with Say. Recoloring also updates lines already in the chat window.
 13. **`ChatTypeInfo`.** Once chat loads, `ChatFrameUtil.ImportAllListsToHash` moves its entries into the metatable's `__index` and empties the table, so `ChatTypeInfo.SAY` works but `pairs(ChatTypeInfo)` finds nothing. `Read` loops over `__index`. The client has 92 chat types with colors; a few, such as `BN_ALERT`, have no `colorNameByClass`.
-14. **Combat Log message groups.** The Combat Log tab reports message groups like any other tab (`OPENING`, `TRADESKILLS`, `PET_INFO`, `COMBAT_XP_GAIN`, `COMBAT_HONOR_GAIN` and `COMBAT_MISC_INFO` by default), and the player can change them in its settings. They're stored per character: adding `SKILL` and `LOOT` on one character left another's unchanged. They're saved under Message filters, and a profile saved before that has none for the Combat Log, so it's left alone.
+14. **Combat Log message groups.** The Combat Log tab reports message groups like any other tab (`OPENING`, `TRADESKILLS`, `PET_INFO`, `COMBAT_XP_GAIN`, `COMBAT_HONOR_GAIN` and `COMBAT_MISC_INFO` by default), and the player can change them in its settings. They're stored per character: adding `SKILL` and `LOOT` on one character left another's unchanged. They're saved under Message filters.
 15. **Window position.** `FCF_SavePositionAndDimensions` stores a corner and offsets as fractions of the screen size, so saved positions work at any resolution. Docked tabs follow General and have no position of their own, but a tab keeps its saved position after it's docked again, so only undocked tabs store one. Every window reports a default size (430 × 120). General's position belongs to Edit Mode, and `FCF_RestorePositionAndDimensions` skips it.
 16. **Custom channel names.** Channel membership ignores case, and the client reports a channel in the case it was joined with, so custom channels are matched ignoring case. Channels with Cyrillic names can't be joined.
 

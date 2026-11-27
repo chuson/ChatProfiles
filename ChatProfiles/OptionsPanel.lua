@@ -32,29 +32,48 @@ panel:Hide()
 local settingsCategory = Settings.RegisterCanvasLayoutCategory(panel, "ChatProfiles")
 Settings.RegisterAddOnCategory(settingsCategory)
 
+-- The room Settings gives the page depends on screen size and UI scale, so the page scrolls
+-- when its contents don't fit.
+local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "ScrollFrameTemplate")
+scrollFrame:SetPoint("TOPLEFT")
+scrollFrame:SetPoint("BOTTOMRIGHT", -24, 0) -- room for the scroll bar
+local content = CreateFrame("Frame", nil, scrollFrame)
+content:SetSize(LEFT_MARGIN + CONTENT_WIDTH, 1)
+scrollFrame:SetScrollChild(content)
+
 -- The widgets are built the first time the panel opens, since most sessions never open it.
 local widgets
 
-local function StatusText(name, applyFailed, differences)
+-- Sizes the page to what's shown, so it only scrolls when that doesn't fit. The paste box is
+-- the lowest part when it's open.
+local function FitContent()
+	local lowest = widgets.pasteMode and widgets.addImported or widgets.export
+	local top, bottom = content:GetTop(), lowest:GetBottom()
+	if top and bottom then
+		content:SetHeight(top - bottom + 16)
+	end
+end
+
+local function StatusText(name, applyFailed, changes)
 	if not name then
 		return "This character isn't using a profile."
 	elseif applyFailed then
 		return "Some settings couldn't be applied, so changes won't be saved until you reload or log in again."
-	elseif #differences == 0 then
+	elseif #changes == 0 then
 		return "Your chat settings match the profile."
-	elseif #differences == 1 then
+	elseif #changes == 1 then
 		return "1 unsaved change. It will be saved when you log out."
 	end
-	return #differences .. " unsaved changes. They'll be saved when you log out."
+	return #changes .. " unsaved changes. They'll be saved when you log out."
 end
 
-local function DetailText(differences, duplicateTabNames)
+local function DetailText(changes, duplicateTabNames)
 	local lines = {}
-	for i = 1, math.min(#differences, MAX_DETAIL_LINES) do
-		table.insert(lines, differences[i].text)
+	for i = 1, math.min(#changes, MAX_DETAIL_LINES) do
+		table.insert(lines, changes[i].text)
 	end
-	if #differences > MAX_DETAIL_LINES then
-		table.insert(lines, "...and " .. (#differences - MAX_DETAIL_LINES) .. " more")
+	if #changes > MAX_DETAIL_LINES then
+		table.insert(lines, "...and " .. (#changes - MAX_DETAIL_LINES) .. " more")
 	end
 	if #duplicateTabNames > 0 then
 		local names = table.concat(duplicateTabNames, ", ")
@@ -95,32 +114,30 @@ local function Refresh()
 		checkbox:SetChecked(categories ~= nil and categories[checkbox.category])
 		checkbox:SetEnabled(profile ~= nil)
 	end
-	-- With every box unchecked, saving would keep nothing, so it waits for one to be checked.
+	-- With every box unchecked, saving would keep nothing, warning prompts for at least one checked box.
 	local hasCategory = categories ~= nil and Profiles.HasCategoryOn(categories)
 	widgets.categoryWarning:SetShown(profile ~= nil and not hasCategory)
 	widgets.rename:SetEnabled(profile ~= nil)
 	widgets.delete:SetEnabled(profile ~= nil)
 	widgets.export:SetEnabled(profile ~= nil)
-	widgets.saveNow:SetEnabled(hasCategory and not applyFailed)
+	widgets.saveNow:SetEnabled(Profiles.CanSave())
 
 	local changes, duplicateTabNames = UnsavedChanges()
 	widgets.status:SetText(StatusText(name, applyFailed, changes))
 	widgets.details:SetText(DetailText(changes or {}, duplicateTabNames or {}))
 	widgets.UpdateExport()
+	FitContent()
 end
 
-local function ShowMessage(text)
-	widgets.message:SetText(text or "")
+local function ShowError(text)
+	UIErrorsFrame:AddMessage(text, RED_FONT_COLOR:GetRGB())
 end
 
+-- If some settings don't apply, the status line says so and lists them.
 local function SwitchProfile(name)
 	local remaining, reason = Profiles.Select(name)
 	if not remaining then
-		ShowMessage(reason)
-	elseif #remaining > 0 then
-		ShowMessage("Some settings couldn't be applied. They're listed above.")
-	else
-		ShowMessage(nil)
+		ShowError(reason)
 	end
 	Refresh()
 end
@@ -129,6 +146,8 @@ local function HidePasteArea()
 	for _, part in ipairs(widgets.pasteArea) do
 		part:Hide()
 	end
+	widgets.pasteMode = nil
+	FitContent()
 end
 
 -- New, Rename and Import ask for a name in this popup, and `data.save` saves it. Returning
@@ -136,13 +155,12 @@ end
 local function AcceptName(dialog, data)
 	local name, reason = data.save(dialog:GetEditBox():GetText())
 	if not name then
-		UIErrorsFrame:AddMessage(reason, RED_FONT_COLOR:GetRGB())
+		ShowError(reason)
 		return true
 	end
 	if data.onSaved then
-		data.onSaved()
+		data.onSaved(name)
 	end
-	ShowMessage(data.successText:format(name))
 	Refresh()
 end
 
@@ -185,7 +203,6 @@ StaticPopupDialogs.CHAT_PROFILES_DELETE = {
 	button2 = "Cancel",
 	OnAccept = function(_, name)
 		Profiles.Delete(name)
-		ShowMessage('Deleted "' .. name .. '".')
 		Refresh()
 	end,
 	timeout = 0,
@@ -217,7 +234,7 @@ local function SelectProfile(name)
 end
 
 local function Label(text, font, anchor, x, y)
-	local label = panel:CreateFontString(nil, "ARTWORK", font or "GameFontHighlight")
+	local label = content:CreateFontString(nil, "ARTWORK", font or "GameFontHighlight")
 	label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", x or 0, y or -16)
 	label:SetJustifyH("LEFT")
 	label:SetText(text)
@@ -225,7 +242,7 @@ local function Label(text, font, anchor, x, y)
 end
 
 local function Button(text, width, onClick)
-	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	local button = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
 	button:SetText(text)
 	button:SetSize(width, 22)
 	button:SetScript("OnClick", onClick)
@@ -235,7 +252,7 @@ end
 -- A gold heading with a line under it. Returns the line, so the section's contents can sit below it.
 local function SectionHeading(text, anchor)
 	local heading = Label(text, "GameFontNormal", anchor, 0, -20)
-	local line = panel:CreateTexture(nil, "ARTWORK")
+	local line = content:CreateTexture(nil, "ARTWORK")
 	line:SetColorTexture(1, 1, 1, 0.15)
 	line:SetSize(CONTENT_WIDTH, 1)
 	line:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", 0, -4)
@@ -245,7 +262,7 @@ end
 local function BuildProfileSection(anchor)
 	local line = SectionHeading("Profile", anchor)
 
-	widgets.dropdown = CreateFrame("DropdownButton", nil, panel, "WowStyle1DropdownTemplate")
+	widgets.dropdown = CreateFrame("DropdownButton", nil, content, "WowStyle1DropdownTemplate")
 	widgets.dropdown:SetPoint("TOPLEFT", line, "BOTTOMLEFT", 0, -12)
 	widgets.dropdown:SetWidth(220)
 	widgets.dropdown:SetupMenu(function(_, root)
@@ -266,7 +283,6 @@ local function BuildProfileSection(anchor)
 	local new = Button("New", 80, function()
 		AskForName("Name the new profile. It starts from your current chat settings.", {
 			save = Profiles.SaveAsNew,
-			successText = 'Saved your chat settings as "%s". This character now uses it.',
 		})
 	end)
 	new:SetPoint("LEFT", widgets.dropdown, "RIGHT", 12, 0)
@@ -278,7 +294,6 @@ local function BuildProfileSection(anchor)
 			save = function(name)
 				return Profiles.Rename(oldName, name)
 			end,
-			successText = 'Renamed to "%s".',
 		})
 	end)
 	widgets.rename:SetPoint("LEFT", new, "RIGHT", 6, 0)
@@ -291,12 +306,11 @@ local function BuildProfileSection(anchor)
 
 	widgets.saveNow = Button("Save now", 100, function()
 		Profiles.SaveSelected()
-		ShowMessage('Saved your chat settings to "' .. Profiles.Selected() .. '".')
 		Refresh()
 	end)
 	widgets.saveNow:SetPoint("TOPLEFT", widgets.dropdown, "BOTTOMLEFT", 0, -12)
 
-	widgets.status = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	widgets.status = content:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	widgets.status:SetPoint("LEFT", widgets.saveNow, "RIGHT", 12, 0)
 	widgets.status:SetWidth(CONTENT_WIDTH - widgets.saveNow:GetWidth() - 12)
 	widgets.status:SetJustifyH("LEFT")
@@ -311,14 +325,14 @@ local function BuildCategorySection(anchor)
 	widgets.checkboxes = {}
 	local previous
 	for _, category in ipairs(CATEGORIES) do
-		local checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		local checkbox = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
 		if previous then
 			checkbox:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -6)
 		else
 			checkbox:SetPoint("TOPLEFT", line, "BOTTOMLEFT", 0, -8)
 		end
 		checkbox.Text:SetText(category.label)
-		local description = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+		local description = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 		description:SetPoint("TOPLEFT", checkbox.Text, "BOTTOMLEFT", 0, -2)
 		description:SetText(category.description)
 
@@ -349,50 +363,54 @@ local function BuildSharingSection(anchor)
 	widgets.export:SetPoint("TOPLEFT", line, "BOTTOMLEFT", 0, -12)
 	local import = Button("Import", 100)
 	import:SetPoint("LEFT", widgets.export, "RIGHT", 6, 0)
-	local hint = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	hint:SetPoint("LEFT", import, "RIGHT", 12, 0)
-	hint:SetText("Copy a profile to another account, or share it with a friend.")
+	-- Also confirms an import, since nothing else on the panel changes when one is added.
+	widgets.sharingHint = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	widgets.sharingHint:SetPoint("LEFT", import, "RIGHT", 12, 0)
 
 	-- One text box serves both directions, and it only appears once Export or Import is clicked.
-	local pasteBox = CreateFrame("ScrollFrame", nil, panel, "InputScrollFrameTemplate")
+	local pasteBox = CreateFrame("ScrollFrame", nil, content, "InputScrollFrameTemplate")
 	pasteBox:SetSize(CONTENT_WIDTH - 10, 80)
 	pasteBox:SetPoint("TOPLEFT", widgets.export, "BOTTOMLEFT", 6, -12)
 	pasteBox.EditBox:SetWidth(CONTENT_WIDTH - 30) -- room for the scroll bar
 	pasteBox.EditBox:SetAutoFocus(false)
 	pasteBox.CharCount:Hide()
 
+	local pasteHint = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 	local addImported = Button("Add profile", 110, function()
 		local profile, importReason = ExportString.Import(pasteBox.EditBox:GetText())
 		if not profile then
-			ShowMessage("Couldn't import: " .. importReason .. ".")
+			pasteHint:SetText(RED_FONT_COLOR:WrapTextInColorCode("Couldn't import: " .. importReason .. "."))
 			return
 		end
 		AskForName("Name the imported profile:", {
 			save = function(name)
 				return Profiles.AddImported(name, profile)
 			end,
-			successText = 'Imported "%s". Choose it from the Profile menu to use it.',
-			onSaved = HidePasteArea,
+			onSaved = function(name)
+				HidePasteArea()
+				widgets.sharingHint:SetText('Imported "' .. name .. '". Choose it from the Profile menu to use it.')
+			end,
 		})
 	end)
 	addImported:SetPoint("TOPLEFT", pasteBox, "BOTTOMLEFT", -6, -10)
-
-	local pasteHint = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	widgets.addImported = addImported
 	pasteHint:SetPoint("LEFT", addImported, "RIGHT", 12, 0)
 	pasteHint:SetWidth(CONTENT_WIDTH - addImported:GetWidth() - 12)
 	pasteHint:SetJustifyH("LEFT")
 
+	-- `pasteMode` is "export" or "import" while the box is open, and nil once it's hidden.
 	widgets.pasteArea = { pasteBox, addImported, pasteHint }
-	local function ShowPasteBox(text, hintText, isImport)
+	local function ShowPasteBox(mode, text, hintText)
+		widgets.pasteMode = mode
 		pasteBox.EditBox:SetText(text)
 		pasteHint:SetText(hintText)
 		pasteBox:Show()
 		pasteHint:Show()
-		addImported:SetShown(isImport)
+		addImported:SetShown(mode == "import")
 		pasteBox.EditBox:SetFocus()
+		FitContent()
 	end
 
-	local showingExport = false
 	local function ExportHint()
 		local hintText = "Control + C to copy"
 		if #UnsavedChanges() > 0 then
@@ -403,25 +421,22 @@ local function BuildSharingSection(anchor)
 
 	widgets.export:SetScript("OnClick", function()
 		local _, profile = Profiles.Selected()
-		showingExport = true
 		-- Addons can't write to the clipboard, so select the text for the player to copy.
-		ShowPasteBox(ExportString.Export(profile), ExportHint())
+		ShowPasteBox("export", ExportString.Export(profile), ExportHint())
 		pasteBox.EditBox:HighlightText()
 	end)
 	import:SetScript("OnClick", function()
-		showingExport = false
-		ShowPasteBox("", "Paste a ChatProfiles export in the box, then click Add profile.", true)
+		ShowPasteBox("import", "", "Paste a ChatProfiles export in the box, then click Add profile.")
 	end)
 
 	-- Called on every Refresh, so an open export follows saves and profile switches. The text is
 	-- only replaced when it changes, since replacing it clears the player's selection.
 	function widgets.UpdateExport()
-		if not showingExport or not pasteBox:IsShown() then
+		if widgets.pasteMode ~= "export" then
 			return
 		end
 		local _, profile = Profiles.Selected()
 		if not profile then
-			showingExport = false
 			HidePasteArea()
 			return
 		end
@@ -434,13 +449,12 @@ local function BuildSharingSection(anchor)
 		end
 		pasteHint:SetText(ExportHint())
 	end
-	return addImported
 end
 
 local function BuildWidgets()
 	widgets = {}
 
-	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	local title = content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", LEFT_MARGIN, -16)
 	title:SetText("ChatProfiles")
 	local intro = Label(
@@ -453,10 +467,7 @@ local function BuildWidgets()
 
 	local last = BuildProfileSection(intro)
 	last = BuildCategorySection(last)
-	last = BuildSharingSection(last)
-
-	widgets.message = Label("", "GameFontNormal", last, 0, -14)
-	widgets.message:SetWidth(CONTENT_WIDTH)
+	BuildSharingSection(last)
 end
 
 panel:SetScript("OnShow", function()
@@ -464,13 +475,13 @@ panel:SetScript("OnShow", function()
 		BuildWidgets()
 	end
 	HidePasteArea()
-	ShowMessage(nil)
+	widgets.sharingHint:SetText("Copy a profile to another account, or share it with a friend.")
 	Refresh()
 end)
 
 -- Changing chat settings fires no events, so the status is checked again when the mouse comes
--- back to the panel, as it does after a change in the chat window. Motion only, so clicks
--- still reach whatever is underneath.
+-- back to the panel, as it does after a change in the chat window. Motion only, so clicks and
+-- the scroll wheel still reach whatever is underneath.
 panel:SetMouseMotionEnabled(true)
 panel:SetScript("OnEnter", function()
 	if widgets then

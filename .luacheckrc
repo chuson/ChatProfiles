@@ -19,6 +19,7 @@ read_globals = {
 	"ChangeChatColor",
 	"ChatTypeInfo",
 	"Constants",
+	"CopyTable",
 	"CreateFrame",
 	"FCF_CheckShowChatFrame",
 	"FCF_Close",

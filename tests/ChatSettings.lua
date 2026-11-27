@@ -292,12 +292,6 @@ ExpectDiff(
 	{ "whispers: docked instead of undocked" }
 )
 ExpectDiff(
-	"a profile saved before dock state was stored",
-	Live({ General({ docked = true }), Tab("whispers", UNDOCKED) }),
-	Profile({ General(), Tab("whispers") }),
-	{}
-)
-ExpectDiff(
 	"a different dock state with Tabs off",
 	Live({ Tab("whispers", UNDOCKED) }),
 	Profile({ Tab("whispers", { docked = true }) }, nil, AllCategoriesExcept("tabs")),
@@ -362,12 +356,6 @@ ExpectDiff(
 	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
 	Profile({ General({ docked = true }), Docked("party"), Tab("trade", { docked = false }) }),
 	{ "trade: docked instead of undocked" }
-)
-ExpectDiff(
-	"a different order from a profile saved before dock state was stored",
-	Live({ General({ docked = true }), Docked("trade"), Docked("party") }),
-	Profile({ General(), Tab("party"), Tab("trade") }),
-	{ "Tabs in a different order" }
 )
 ExpectDiff(
 	"a different order with Tabs off",
@@ -477,12 +465,6 @@ ExpectDiff(
 	Profile({ CombatLog({ messageGroups = { "OPENING", "SKILL" }, channels = {} }) }),
 	{ "Combat Log: doesn't show SKILL messages", "Combat Log: also shows LOOT messages" },
 	{ "ChatFrame2:AddMessageGroup SKILL", "ChatFrame2:RemoveMessageGroup LOOT" }
-)
-ExpectDiff(
-	"a Combat Log saved before its message groups were saved",
-	Live({ CombatLog({ messageGroups = { "LOOT", "OPENING" }, channels = {} }) }),
-	Profile({ CombatLog() }),
-	{}
 )
 ExpectDiff(
 	"different message groups with Message filters off",

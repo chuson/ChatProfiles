@@ -98,8 +98,13 @@ function Profiles.Differences()
 	if not profile then
 		return nil
 	end
-	local live = ChatSettings.Read(profile.categories)
-	return ChatSettings.Diff(live, profile), live.duplicateTabNames
+	-- Compares only what the next save keeps: categories that are saved and still checked.
+	local checked, compared = Profiles.Categories(), {}
+	for category, on in pairs(profile.categories) do
+		compared[category] = on and checked[category]
+	end
+	local live = ChatSettings.Read(compared)
+	return ChatSettings.Diff(live, profile, compared), live.duplicateTabNames
 end
 
 function Profiles.HasCategoryOn(categories)
@@ -137,13 +142,15 @@ function Profiles.SetCategoryEnabled(category, enabled)
 	if not profile then
 		return
 	end
-	pendingCategories = pendingCategories or {}
-	for name, on in pairs(profile.categories) do
-		if pendingCategories[name] == nil then
-			pendingCategories[name] = on
-		end
-	end
+	pendingCategories = pendingCategories or CopyTable(profile.categories)
 	pendingCategories[category] = enabled
+end
+
+-- Returns true if SaveSelected would save now. With every category off nothing is saved, so the
+-- profile keeps its last saved selection.
+function Profiles.CanSave()
+	local categories = Profiles.Categories()
+	return categories ~= nil and Profiles.HasCategoryOn(categories) and not lastApplyFailed and not loginApplyPending
 end
 
 -- Saves the live settings and any checkbox changes into the selected profile. Runs at logout and
@@ -151,16 +158,12 @@ end
 --
 -- Saves even when nothing seems to differ. A category that was just turned on has no saved
 -- data yet, so the comparison can't see its changes. Categories that are turned off are dropped.
--- With every category off nothing is saved, so the profile keeps its last saved selection.
 function Profiles.SaveSelected()
+	if not Profiles.CanSave() then
+		return
+	end
 	local _, profile = Profiles.Selected()
-	if not profile or lastApplyFailed or loginApplyPending then
-		return
-	end
 	local categories = pendingCategories or profile.categories
-	if not Profiles.HasCategoryOn(categories) then
-		return
-	end
 	local live = ChatSettings.Read(categories)
 	profile.categories = categories
 	profile.windows = live.windows
@@ -221,14 +224,10 @@ function Profiles.SaveAsNew(name)
 	if not newName then
 		return nil, reason
 	end
-	-- Start from the checkboxes as they are, so a category turned off on purpose stays off.
-	local categories = AllCategoriesOn()
+	-- Start from the checkboxes as they are, so a category turned off on purpose stays off, or all
+	-- four if none are checked.
 	local current = Profiles.Categories()
-	if current and Profiles.HasCategoryOn(current) then
-		for category, enabled in pairs(current) do
-			categories[category] = enabled
-		end
-	end
+	local categories = (current and Profiles.HasCategoryOn(current)) and CopyTable(current) or AllCategoriesOn()
 	local live = ChatSettings.Read(categories)
 	db.profiles[newName] = { categories = categories, windows = live.windows, colors = live.colors }
 	db.profileByCharacter[CharacterKey()] = newName
@@ -249,8 +248,9 @@ function Profiles.AddImported(name, profile)
 end
 
 function Profiles.Rename(oldName, name)
-	-- The name check below would reject the unchanged name as one that's already taken.
-	if name == oldName then
+	-- The name check below would reject the unchanged name as one that's already taken. Spaces
+	-- around a name are trimmed, so "Main " is still Main.
+	if TrimSpaces(name or "") == oldName then
 		return oldName
 	end
 	local newName, reason = CheckNewName(name)
@@ -286,13 +286,6 @@ local function LoadSavedVariables()
 	db.schema = db.schema or 1
 	db.profiles = db.profiles or {}
 	db.profileByCharacter = db.profileByCharacter or {}
-	-- Version 0.1.1 saved checkbox changes straight away, so a profile could end up with every
-	-- category off, which saves and applies nothing. Its settings are still there.
-	for _, profile in pairs(db.profiles) do
-		if not Profiles.HasCategoryOn(profile.categories) then
-			profile.categories = AllCategoriesOn()
-		end
-	end
 end
 
 local events = CreateFrame("Frame")

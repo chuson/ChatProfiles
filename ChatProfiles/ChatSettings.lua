@@ -156,6 +156,18 @@ local function SetDifference(have, want, keyOf)
 	return missing, extra
 end
 
+local function SameList(a, b)
+	if #a ~= #b then
+		return false
+	end
+	for i = 1, #a do
+		if a[i] ~= b[i] then
+			return false
+		end
+	end
+	return true
+end
+
 -- The client stores colors as 0-255, so values read back are rounded.
 local function NearlyEqual(x, y)
 	return math.abs(x - y) < 0.01
@@ -241,8 +253,7 @@ local function DiffWindow(frame, have, want, categories, dockIndex, addDifferenc
 		end
 	end
 
-	-- A profile may have no message groups or channels: one saved while this category was off,
-	-- or a Combat Log saved by an earlier version, which didn't save its groups.
+	-- A profile saved while this category was off has no message groups or channels.
 	if categories.messagesAndChannels and want.messageGroups and have.messageGroups then
 		local missing, extra = SetDifference(have.messageGroups, want.messageGroups, function(group)
 			return group
@@ -303,7 +314,7 @@ local function DiffColors(liveColors, profileColors, addDifference)
 end
 
 local function IsCustomKey(key)
-	return key:sub(1, 5) == "name:"
+	return key:find("^name:") ~= nil
 end
 
 -- FCF_DockFrame returns early for a tab that's already docked, so each tab is undocked and
@@ -322,12 +333,17 @@ end
 
 -- Returns a list of { text, apply, opensOrClosesTab }, one per setting that differs. `text`
 -- says how the live settings differ from the profile, and `apply` makes them match. The panel
--- shows the text, and Apply runs the same entries, so the two can't disagree.
-function ChatSettings.Diff(live, profile)
-	local categories = profile.categories
+-- shows the text, and Apply runs the same entries, so the two can't disagree. `categories`
+-- narrows the comparison, and defaults to the profile's own.
+function ChatSettings.Diff(live, profile, categories)
+	categories = categories or profile.categories
 	local differences = {}
-	local function AddDifference(text, apply, opensOrClosesTab)
-		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = opensOrClosesTab })
+	local function AddDifference(text, apply)
+		table.insert(differences, { text = text, apply = apply })
+	end
+	-- Apply runs these first, so a tab exists before its settings are changed.
+	local function AddTabChange(text, apply)
+		table.insert(differences, { text = text, apply = apply, opensOrClosesTab = true })
 	end
 
 	-- General and Combat Log are static tabs (isStaticDocked): the dock always draws them first,
@@ -337,23 +353,21 @@ function ChatSettings.Diff(live, profile)
 		return key == general or key == combatLog
 	end
 
-	-- Profiles list their docked tabs in dock order, so counting them gives each one's place
-	-- after the static tabs. A profile saved before dock state was stored counts as all docked.
 	local liveByKey, wanted = {}, {}
 	for _, have in ipairs(live.windows) do
 		liveByKey[have.key] = have
 	end
-	local wantsCombatLogDocked = false
 	for _, want in ipairs(profile.windows) do
 		wanted[want.key] = want
-		if want.key == combatLog and want.docked ~= false then
-			wantsCombatLogDocked = true
-		end
 	end
+
+	-- Profiles list their docked tabs in dock order, so counting them gives each one's place
+	-- after the static tabs.
+	local combatLogWant = wanted[combatLog]
 	local dockIndex = { [general] = 1, [combatLog] = 2 }
-	local dockedCount = wantsCombatLogDocked and 2 or 1
+	local dockedCount = (combatLogWant and combatLogWant.docked) and 2 or 1
 	for _, want in ipairs(profile.windows) do
-		if not IsStatic(want.key) and want.docked ~= false then
+		if not IsStatic(want.key) and want.docked then
 			dockedCount = dockedCount + 1
 			dockIndex[want.key] = dockedCount
 		end
@@ -364,9 +378,9 @@ function ChatSettings.Diff(live, profile)
 		for _, have in ipairs(live.windows) do
 			if IsCustomKey(have.key) and not wanted[have.key] then
 				local frame = _G["ChatFrame" .. live.windowNumbers[have.key]]
-				AddDifference('Extra tab "' .. have.name .. '"', function()
+				AddTabChange('Extra tab "' .. have.name .. '"', function()
 					FCF_Close(frame)
-				end, true)
+				end)
 			end
 		end
 	end
@@ -378,21 +392,22 @@ function ChatSettings.Diff(live, profile)
 		local haveOrder, wantOrder = {}, {}
 		for _, have in ipairs(live.windows) do
 			local want = wanted[have.key]
-			if not IsStatic(have.key) and have.docked and want and want.docked ~= false then
+			if not IsStatic(have.key) and have.docked and want and want.docked then
 				table.insert(haveOrder, have.key)
 			end
 		end
 		for _, want in ipairs(profile.windows) do
 			local have = liveByKey[want.key]
-			if not IsStatic(want.key) and want.docked ~= false and have and have.docked then
+			if not IsStatic(want.key) and want.docked and have and have.docked then
 				table.insert(wantOrder, want.key)
 			end
 		end
-		if table.concat(haveOrder, "\n") ~= table.concat(wantOrder, "\n") then
+		if not SameList(haveOrder, wantOrder) then
 			local frames = {}
 			for i, key in ipairs(wantOrder) do
 				frames[i] = _G["ChatFrame" .. live.windowNumbers[key]]
 			end
+			-- Live state, not the profile's: this runs before the Combat Log's own dock change.
 			local liveCombatLog = liveByKey[combatLog]
 			local firstIndex = (liveCombatLog and liveCombatLog.docked) and 3 or 2
 			AddDifference("Tabs in a different order", function()
@@ -407,9 +422,9 @@ function ChatSettings.Diff(live, profile)
 			local frame = _G["ChatFrame" .. live.windowNumbers[want.key]]
 			DiffWindow(frame, have, want, categories, dockIndex[want.key], AddDifference)
 		elseif categories.tabs and IsCustomKey(want.key) then
-			AddDifference('Missing tab "' .. want.name .. '"', function()
+			AddTabChange('Missing tab "' .. want.name .. '"', function()
 				FCF_OpenNewWindow(want.name, true) -- noDefaultChannels; the second pass adds the profile's own
-			end, true)
+			end)
 		end
 	end
 
